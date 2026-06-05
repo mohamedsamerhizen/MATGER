@@ -1,0 +1,39 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / VS Code local state
+.vs/
+.vscode/*.user
+.vscode/*.log
+.vscode/.ropeproject/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Docker SQL Server local data, if a bind-mounted folder is used later
+sqlserver-data/
+data/sqlserver/
+
+# Logs
+logs/
+
+# Test and coverage output
+TestResults/
+**/TestResults/
+coverage/
+coverage*/
+**/coverage/
+**/coverage*/
+*.trx
+*.coverage
+*.coveragexml
+
+# Local safety backups
+_backup_before_simplification_*/
+
+# User-specific IDE files
+*.user
+*.suo
