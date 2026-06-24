@@ -16,7 +16,12 @@ public sealed class UpdateProductRequest
     [Range(0.01, 999999999)]
     public decimal? Price { get; init; }
 
+    [Range(0, 999999999)]
+    public decimal? CostPrice { get; init; }
+
     public Guid? CategoryId { get; init; }
+
+    public Guid? BrandId { get; init; }
 
     public bool? IsActive { get; init; }
 

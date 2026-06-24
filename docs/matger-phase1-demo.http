@@ -1,0 +1,126 @@
+@baseUrl = https://localhost:7035
+@adminEmail = admin@matger.local
+@adminPassword = Admin12345
+@customerEmail = customer1@matger.local
+@customerPassword = Customer12345
+
+### Health check
+GET {{baseUrl}}/health
+
+### Admin login
+# Copy accessToken from the response into @adminToken.
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### Customer register
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "Demo Customer",
+  "email": "{{customerEmail}}",
+  "password": "{{customerPassword}}"
+}
+
+### Customer login
+# Copy accessToken from the response into @customerToken.
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{customerEmail}}",
+  "password": "{{customerPassword}}"
+}
+
+@adminToken = paste-admin-access-token-here
+@customerToken = paste-customer-access-token-here
+@categoryId = paste-category-id-here
+@productId = paste-product-id-here
+@cartItemId = paste-cart-item-id-here
+@orderId = paste-order-id-here
+@shippingAddressId = paste-shipping-address-id-here
+@shippingMethodId = paste-shipping-method-id-here
+
+### Admin: create category
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Demo Electronics"
+}
+
+### Admin: create product
+POST {{baseUrl}}/api/products
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Demo Wireless Headset",
+  "description": "A demo product used for the MATGER local API flow.",
+  "sku": "DEMO-HEADSET-001",
+  "price": 79.99,
+  "isFeatured": true,
+  "isReturnable": true,
+  "returnWindowDays": 14,
+  "categoryId": "{{categoryId}}"
+}
+
+### Public: list products
+GET {{baseUrl}}/api/products
+
+### Customer: add item to cart
+POST {{baseUrl}}/api/cart/items
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 1
+}
+
+### Customer: view cart
+GET {{baseUrl}}/api/cart
+Authorization: Bearer {{customerToken}}
+
+### Customer: start checkout
+POST {{baseUrl}}/api/checkout/start
+Authorization: Bearer {{customerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "shippingAddressId": "{{shippingAddressId}}",
+  "shippingMethodId": "{{shippingMethodId}}"
+}
+
+### Customer: confirm mock payment
+POST {{baseUrl}}/api/checkout/confirm-payment
+Authorization: Bearer {{customerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "orderId": "{{orderId}}"
+}
+
+### Customer: my orders
+GET {{baseUrl}}/api/orders
+Authorization: Bearer {{customerToken}}
+
+### Admin: dashboard stats
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+### Admin: inventory intelligence summary
+GET {{baseUrl}}/api/admin/inventory-intelligence/summary
+Authorization: Bearer {{adminToken}}
+
+### Admin: checkout consistency summary
+GET {{baseUrl}}/api/admin/checkout-consistency/summary
+Authorization: Bearer {{adminToken}}

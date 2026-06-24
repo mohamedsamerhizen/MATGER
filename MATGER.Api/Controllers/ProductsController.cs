@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MATGER.Api.Data;
 using MATGER.Api.DTOs.Common;
 using MATGER.Api.DTOs.Products;
@@ -20,8 +21,11 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         [FromQuery] string? search = null,
         [FromQuery] Guid? categoryId = null,
         [FromQuery] string? categorySlug = null,
+        [FromQuery] Guid? brandId = null,
+        [FromQuery] string? brandSlug = null,
         [FromQuery] decimal? minPrice = null,
         [FromQuery] decimal? maxPrice = null,
+        [FromQuery] bool activeSaleOnly = false,
         [FromQuery] bool inStockOnly = false,
         [FromQuery] bool featuredOnly = false,
         [FromQuery] string? sortBy = null,
@@ -31,6 +35,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
     {
         var validationError = ValidateProductSearchRequest(
             categoryId,
+            brandId,
             minPrice,
             maxPrice,
             sortBy);
@@ -43,6 +48,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         }
 
         var normalizedSortBy = NormalizeSortBy(sortBy) ?? "name";
+        var now = DateTime.UtcNow;
         (page, pageSize) = PaginationHelper.Normalize(page, pageSize);
 
         var query = dbContext.Products
@@ -73,14 +79,52 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             query = query.Where(product => product.Category.Slug == normalizedCategorySlug);
         }
 
+        if (brandId.HasValue)
+        {
+            query = query.Where(product => product.BrandId == brandId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(brandSlug))
+        {
+            var normalizedBrandSlug = brandSlug.Trim().ToLowerInvariant();
+
+            query = query.Where(product =>
+                product.Brand != null &&
+                product.Brand.Slug == normalizedBrandSlug);
+        }
+
+        if (activeSaleOnly)
+        {
+            query = query.Where(product =>
+                product.SalePrice.HasValue &&
+                product.SaleStartAtUtc.HasValue &&
+                product.SaleEndAtUtc.HasValue &&
+                product.SaleStartAtUtc.Value <= now &&
+                product.SaleEndAtUtc.Value > now);
+        }
+
         if (minPrice.HasValue)
         {
-            query = query.Where(product => product.Price >= minPrice.Value);
+            query = query.Where(product =>
+                (product.SalePrice.HasValue &&
+                 product.SaleStartAtUtc.HasValue &&
+                 product.SaleEndAtUtc.HasValue &&
+                 product.SaleStartAtUtc.Value <= now &&
+                 product.SaleEndAtUtc.Value > now
+                    ? product.SalePrice.Value
+                    : product.Price) >= minPrice.Value);
         }
 
         if (maxPrice.HasValue)
         {
-            query = query.Where(product => product.Price <= maxPrice.Value);
+            query = query.Where(product =>
+                (product.SalePrice.HasValue &&
+                 product.SaleStartAtUtc.HasValue &&
+                 product.SaleEndAtUtc.HasValue &&
+                 product.SaleStartAtUtc.Value <= now &&
+                 product.SaleEndAtUtc.Value > now
+                    ? product.SalePrice.Value
+                    : product.Price) <= maxPrice.Value);
         }
 
         if (inStockOnly)
@@ -95,7 +139,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             query = query.Where(product => product.IsFeatured);
         }
 
-        query = ApplySorting(query, normalizedSortBy);
+        query = ApplySorting(query, normalizedSortBy, now);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -236,6 +280,31 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
                 "Active category was not found."));
         }
 
+        Brand? brand = null;
+
+        if (request.BrandId.HasValue)
+        {
+            if (request.BrandId.Value == Guid.Empty)
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Brand id is invalid."));
+            }
+
+            brand = await dbContext.Brands
+                .FirstOrDefaultAsync(brand =>
+                    brand.Id == request.BrandId.Value &&
+                    brand.IsActive,
+                    cancellationToken);
+
+            if (brand is null)
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Active brand was not found."));
+            }
+        }
+
         var now = DateTime.UtcNow;
 
         var product = new Product
@@ -245,6 +314,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             Description = request.Description.Trim(),
             SKU = normalizedSku,
             Price = request.Price,
+            CostPrice = request.CostPrice,
             IsActive = true,
             IsFeatured = request.IsFeatured,
             WeightKg = request.WeightKg,
@@ -255,6 +325,8 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             ReturnWindowDays = request.ReturnWindowDays,
             CategoryId = category.Id,
             Category = category,
+            BrandId = brand?.Id,
+            Brand = brand,
             CreatedAt = now
         };
 
@@ -302,6 +374,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
     {
         var product = await dbContext.Products
             .Include(product => product.Category)
+            .Include(product => product.Brand)
             .FirstOrDefaultAsync(product => product.Id == id, cancellationToken);
 
         if (product is null)
@@ -373,7 +446,32 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
                     "Product price must be greater than zero."));
             }
 
+            if (product.Price != request.Price.Value)
+            {
+                AddPriceHistory(
+                    product,
+                    oldPrice: product.Price,
+                    newPrice: request.Price.Value,
+                    oldSalePrice: product.SalePrice,
+                    newSalePrice: product.SalePrice,
+                    changeType: "BasePriceUpdated",
+                    reason: "Product base price updated.",
+                    changedByUserId: GetCurrentUserId());
+            }
+
             product.Price = request.Price.Value;
+        }
+
+        if (request.CostPrice.HasValue)
+        {
+            if (request.CostPrice.Value < 0)
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Product cost price cannot be negative."));
+            }
+
+            product.CostPrice = request.CostPrice.Value;
         }
 
         if (request.CategoryId.HasValue)
@@ -400,6 +498,32 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
 
             product.CategoryId = category.Id;
             product.Category = category;
+        }
+
+        if (request.BrandId.HasValue)
+        {
+            if (request.BrandId.Value == Guid.Empty)
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Brand id is invalid."));
+            }
+
+            var brand = await dbContext.Brands
+                .FirstOrDefaultAsync(brand =>
+                    brand.Id == request.BrandId.Value &&
+                    brand.IsActive,
+                    cancellationToken);
+
+            if (brand is null)
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Active brand was not found."));
+            }
+
+            product.BrandId = brand.Id;
+            product.Brand = brand;
         }
 
         if (request.IsActive.HasValue)
@@ -718,6 +842,420 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         return NoContent();
     }
 
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPut("{id:guid}/sale")]
+    public async Task<ActionResult<ProductResponse>> UpdateSale(
+        Guid id,
+        UpdateProductSaleRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.SalePrice < 0)
+        {
+            return BadRequest(Error(
+                StatusCodes.Status400BadRequest,
+                "Sale price cannot be negative."));
+        }
+
+        if (request.SaleStartAtUtc >= request.SaleEndAtUtc)
+        {
+            return BadRequest(Error(
+                StatusCodes.Status400BadRequest,
+                "Sale start must be earlier than sale end."));
+        }
+
+        var product = await dbContext.Products
+            .FirstOrDefaultAsync(product => product.Id == id, cancellationToken);
+
+        if (product is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product was not found."));
+        }
+
+        AddPriceHistory(
+            product,
+            oldPrice: product.Price,
+            newPrice: product.Price,
+            oldSalePrice: product.SalePrice,
+            newSalePrice: request.SalePrice,
+            changeType: "SaleUpdated",
+            reason: string.IsNullOrWhiteSpace(request.Reason)
+                ? "Product sale window updated."
+                : request.Reason.Trim(),
+            changedByUserId: GetCurrentUserId());
+
+        product.SalePrice = request.SalePrice;
+        product.SaleStartAtUtc = request.SaleStartAtUtc;
+        product.SaleEndAtUtc = request.SaleEndAtUtc;
+        product.UpdatedAt = DateTime.UtcNow;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = await GetProductResponseAsync(id, cancellationToken);
+
+        return Ok(response);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpDelete("{id:guid}/sale")]
+    public async Task<ActionResult<ProductResponse>> ClearSale(
+        Guid id,
+        [FromBody] ClearProductSaleRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var product = await dbContext.Products
+            .FirstOrDefaultAsync(product => product.Id == id, cancellationToken);
+
+        if (product is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product was not found."));
+        }
+
+        if (product.SalePrice.HasValue || product.SaleStartAtUtc.HasValue || product.SaleEndAtUtc.HasValue)
+        {
+            AddPriceHistory(
+                product,
+                oldPrice: product.Price,
+                newPrice: product.Price,
+                oldSalePrice: product.SalePrice,
+                newSalePrice: null,
+                changeType: "SaleCleared",
+                reason: string.IsNullOrWhiteSpace(request?.Reason)
+                    ? "Product sale cleared."
+                    : request.Reason.Trim(),
+                changedByUserId: GetCurrentUserId());
+
+            product.SalePrice = null;
+            product.SaleStartAtUtc = null;
+            product.SaleEndAtUtc = null;
+            product.UpdatedAt = DateTime.UtcNow;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var response = await GetProductResponseAsync(id, cancellationToken);
+
+        return Ok(response);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpGet("{id:guid}/price-history")]
+    public async Task<ActionResult<IReadOnlyList<ProductPriceHistoryResponse>>> GetPriceHistory(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var productExists = await dbContext.Products
+            .AnyAsync(product => product.Id == id, cancellationToken);
+
+        if (!productExists)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product was not found."));
+        }
+
+        var history = await dbContext.ProductPriceHistories
+            .AsNoTracking()
+            .Where(item => item.ProductId == id)
+            .OrderByDescending(item => item.ChangedAtUtc)
+            .Select(item => new ProductPriceHistoryResponse
+            {
+                Id = item.Id,
+                ProductId = item.ProductId,
+                OldPrice = item.OldPrice,
+                NewPrice = item.NewPrice,
+                OldSalePrice = item.OldSalePrice,
+                NewSalePrice = item.NewSalePrice,
+                ChangedByUserId = item.ChangedByUserId,
+                ChangedAtUtc = item.ChangedAtUtc,
+                Reason = item.Reason,
+                ChangeType = item.ChangeType
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(history);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("{id:guid}/images")]
+    public async Task<ActionResult<ProductImageResponse>> AddImage(
+        Guid id,
+        CreateProductImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var productExists = await dbContext.Products
+            .AnyAsync(product => product.Id == id, cancellationToken);
+
+        if (!productExists)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product was not found."));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ImageUrl))
+        {
+            return BadRequest(Error(
+                StatusCodes.Status400BadRequest,
+                "Image URL is required."));
+        }
+
+        var now = DateTime.UtcNow;
+        var hasImages = await dbContext.ProductImages
+            .AnyAsync(image => image.ProductId == id, cancellationToken);
+        var isPrimary = request.IsPrimary || !hasImages;
+
+        if (isPrimary)
+        {
+            await ClearPrimaryImagesAsync(id, exceptImageId: null, cancellationToken);
+        }
+
+        var image = new ProductImage
+        {
+            Id = Guid.NewGuid(),
+            ProductId = id,
+            ImageUrl = request.ImageUrl.Trim(),
+            AltText = string.IsNullOrWhiteSpace(request.AltText)
+                ? null
+                : request.AltText.Trim(),
+            IsPrimary = isPrimary,
+            SortOrder = request.SortOrder,
+            CreatedAtUtc = now
+        };
+
+        dbContext.ProductImages.Add(image);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Created(
+            $"/api/products/{id}/images/{image.Id}",
+            ToImageResponse(image));
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPatch("{id:guid}/images/{imageId:guid}")]
+    public async Task<ActionResult<ProductImageResponse>> UpdateImage(
+        Guid id,
+        Guid imageId,
+        UpdateProductImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var image = await dbContext.ProductImages
+            .FirstOrDefaultAsync(image =>
+                image.Id == imageId &&
+                image.ProductId == id,
+                cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product image was not found."));
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.ImageUrl))
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Image URL is required."));
+            }
+
+            image.ImageUrl = request.ImageUrl.Trim();
+        }
+
+        if (request.AltText is not null)
+        {
+            image.AltText = string.IsNullOrWhiteSpace(request.AltText)
+                ? null
+                : request.AltText.Trim();
+        }
+
+        if (request.SortOrder.HasValue)
+        {
+            image.SortOrder = request.SortOrder.Value;
+        }
+
+        if (request.IsPrimary.HasValue)
+        {
+            if (request.IsPrimary.Value)
+            {
+                await ClearPrimaryImagesAsync(id, image.Id, cancellationToken);
+            }
+
+            image.IsPrimary = request.IsPrimary.Value;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(ToImageResponse(image));
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpDelete("{id:guid}/images/{imageId:guid}")]
+    public async Task<IActionResult> DeleteImage(
+        Guid id,
+        Guid imageId,
+        CancellationToken cancellationToken)
+    {
+        var image = await dbContext.ProductImages
+            .FirstOrDefaultAsync(image =>
+                image.Id == imageId &&
+                image.ProductId == id,
+                cancellationToken);
+
+        if (image is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product image was not found."));
+        }
+
+        dbContext.ProductImages.Remove(image);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("{id:guid}/specifications")]
+    public async Task<ActionResult<ProductSpecificationResponse>> AddSpecification(
+        Guid id,
+        CreateProductSpecificationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var productExists = await dbContext.Products
+            .AnyAsync(product => product.Id == id, cancellationToken);
+
+        if (!productExists)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product was not found."));
+        }
+
+        var validationError = ValidateSpecification(
+            request.Name,
+            request.Value);
+
+        if (validationError is not null)
+        {
+            return BadRequest(Error(
+                StatusCodes.Status400BadRequest,
+                validationError));
+        }
+
+        var specification = new ProductSpecification
+        {
+            Id = Guid.NewGuid(),
+            ProductId = id,
+            Name = request.Name.Trim(),
+            Value = request.Value.Trim(),
+            GroupName = string.IsNullOrWhiteSpace(request.GroupName)
+                ? null
+                : request.GroupName.Trim(),
+            SortOrder = request.SortOrder
+        };
+
+        dbContext.ProductSpecifications.Add(specification);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Created(
+            $"/api/products/{id}/specifications/{specification.Id}",
+            ToSpecificationResponse(specification));
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPatch("{id:guid}/specifications/{specificationId:guid}")]
+    public async Task<ActionResult<ProductSpecificationResponse>> UpdateSpecification(
+        Guid id,
+        Guid specificationId,
+        UpdateProductSpecificationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var specification = await dbContext.ProductSpecifications
+            .FirstOrDefaultAsync(specification =>
+                specification.Id == specificationId &&
+                specification.ProductId == id,
+                cancellationToken);
+
+        if (specification is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product specification was not found."));
+        }
+
+        if (request.Name is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Specification name is required."));
+            }
+
+            specification.Name = request.Name.Trim();
+        }
+
+        if (request.Value is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.Value))
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Specification value is required."));
+            }
+
+            specification.Value = request.Value.Trim();
+        }
+
+        if (request.GroupName is not null)
+        {
+            specification.GroupName = string.IsNullOrWhiteSpace(request.GroupName)
+                ? null
+                : request.GroupName.Trim();
+        }
+
+        if (request.SortOrder.HasValue)
+        {
+            specification.SortOrder = request.SortOrder.Value;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(ToSpecificationResponse(specification));
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpDelete("{id:guid}/specifications/{specificationId:guid}")]
+    public async Task<IActionResult> DeleteSpecification(
+        Guid id,
+        Guid specificationId,
+        CancellationToken cancellationToken)
+    {
+        var specification = await dbContext.ProductSpecifications
+            .FirstOrDefaultAsync(specification =>
+                specification.Id == specificationId &&
+                specification.ProductId == id,
+                cancellationToken);
+
+        if (specification is null)
+        {
+            return NotFound(Error(
+                StatusCodes.Status404NotFound,
+                "Product specification was not found."));
+        }
+
+        dbContext.ProductSpecifications.Remove(specification);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
+    }
+
 
     private async Task<ActionResult<ProductResponse>> SetProductActiveStateAsync(
         Guid id,
@@ -834,6 +1372,52 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         };
     }
 
+    private Guid? GetCurrentUserId()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(userIdValue, out var userId)
+            ? userId
+            : null;
+    }
+
+    private async Task<ProductResponse> GetProductResponseAsync(
+        Guid productId,
+        CancellationToken cancellationToken)
+    {
+        return await SelectToResponse(
+                dbContext.Products
+                    .AsNoTracking()
+                    .Where(product => product.Id == productId))
+            .FirstAsync(cancellationToken);
+    }
+
+    private void AddPriceHistory(
+        Product product,
+        decimal oldPrice,
+        decimal newPrice,
+        decimal? oldSalePrice,
+        decimal? newSalePrice,
+        string changeType,
+        string? reason,
+        Guid? changedByUserId)
+    {
+        dbContext.ProductPriceHistories.Add(new ProductPriceHistory
+        {
+            Id = Guid.NewGuid(),
+            ProductId = product.Id,
+            Product = product,
+            OldPrice = oldPrice,
+            NewPrice = newPrice,
+            OldSalePrice = oldSalePrice,
+            NewSalePrice = newSalePrice,
+            ChangedByUserId = changedByUserId,
+            ChangedAtUtc = DateTime.UtcNow,
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+            ChangeType = changeType
+        });
+    }
+
     private static string? ValidateCreateRequest(CreateProductRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -854,6 +1438,11 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         if (request.Price <= 0)
         {
             return "Product price must be greater than zero.";
+        }
+
+        if (request.CostPrice.HasValue && request.CostPrice.Value < 0)
+        {
+            return "Product cost price cannot be negative.";
         }
 
         if (request.ReturnWindowDays < 1)
@@ -904,6 +1493,7 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
 
     private static string? ValidateProductSearchRequest(
         Guid? categoryId,
+        Guid? brandId,
         decimal? minPrice,
         decimal? maxPrice,
         string? sortBy)
@@ -911,6 +1501,11 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
         if (categoryId == Guid.Empty)
         {
             return "Category id is invalid.";
+        }
+
+        if (brandId == Guid.Empty)
+        {
+            return "Brand id is invalid.";
         }
 
         if (minPrice.HasValue && minPrice.Value < 0)
@@ -969,7 +1564,8 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
 
     private static IQueryable<Product> ApplySorting(
         IQueryable<Product> query,
-        string sortBy)
+        string sortBy,
+        DateTime now)
     {
         return sortBy switch
         {
@@ -983,11 +1579,25 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
                 .ThenBy(product => product.Name),
 
             "price_asc" => query
-                .OrderBy(product => product.Price)
+                .OrderBy(product =>
+                    product.SalePrice.HasValue &&
+                    product.SaleStartAtUtc.HasValue &&
+                    product.SaleEndAtUtc.HasValue &&
+                    product.SaleStartAtUtc.Value <= now &&
+                    product.SaleEndAtUtc.Value > now
+                        ? product.SalePrice.Value
+                        : product.Price)
                 .ThenBy(product => product.Name),
 
             "price_desc" => query
-                .OrderByDescending(product => product.Price)
+                .OrderByDescending(product =>
+                    product.SalePrice.HasValue &&
+                    product.SaleStartAtUtc.HasValue &&
+                    product.SaleEndAtUtc.HasValue &&
+                    product.SaleStartAtUtc.Value <= now &&
+                    product.SaleEndAtUtc.Value > now
+                        ? product.SalePrice.Value
+                        : product.Price)
                 .ThenBy(product => product.Name),
 
             "rating" => query
@@ -1014,6 +1624,8 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
 
     private static IQueryable<ProductResponse> SelectToResponse(IQueryable<Product> query)
     {
+        var now = DateTime.UtcNow;
+
         return query.Select(product => new ProductResponse
         {
             Id = product.Id,
@@ -1021,6 +1633,21 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             Description = product.Description,
             SKU = product.SKU,
             Price = product.Price,
+            EffectivePrice = product.SalePrice.HasValue &&
+                             product.SaleStartAtUtc.HasValue &&
+                             product.SaleEndAtUtc.HasValue &&
+                             product.SaleStartAtUtc.Value <= now &&
+                             product.SaleEndAtUtc.Value > now
+                ? product.SalePrice.Value
+                : product.Price,
+            SalePrice = product.SalePrice,
+            SaleStartAtUtc = product.SaleStartAtUtc,
+            SaleEndAtUtc = product.SaleEndAtUtc,
+            IsSaleActive = product.SalePrice.HasValue &&
+                           product.SaleStartAtUtc.HasValue &&
+                           product.SaleEndAtUtc.HasValue &&
+                           product.SaleStartAtUtc.Value <= now &&
+                           product.SaleEndAtUtc.Value > now,
             IsActive = product.IsActive,
             IsFeatured = product.IsFeatured,
             WeightKg = product.WeightKg,
@@ -1033,6 +1660,9 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             CategoryId = product.CategoryId,
             CategoryName = product.Category.Name,
             CategorySlug = product.Category.Slug,
+            BrandId = product.BrandId,
+            BrandName = product.Brand == null ? null : product.Brand.Name,
+            BrandSlug = product.Brand == null ? null : product.Brand.Slug,
             QuantityAvailable = product.InventoryItem == null
                 ? 0
                 : product.InventoryItem.QuantityAvailable,
@@ -1051,6 +1681,33 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
                 .Select(review => (decimal?)review.Rating)
                 .Average() ?? 0m,
             ReviewsCount = product.Reviews.Count(review => review.Status == ProductReviewStatus.Visible),
+            Images = product.Images
+                .OrderBy(image => image.SortOrder)
+                .ThenByDescending(image => image.IsPrimary)
+                .ThenBy(image => image.CreatedAtUtc)
+                .Select(image => new ProductImageResponse
+                {
+                    Id = image.Id,
+                    ImageUrl = image.ImageUrl,
+                    AltText = image.AltText,
+                    IsPrimary = image.IsPrimary,
+                    SortOrder = image.SortOrder,
+                    CreatedAtUtc = image.CreatedAtUtc
+                })
+                .ToList(),
+            Specifications = product.Specifications
+                .OrderBy(specification => specification.SortOrder)
+                .ThenBy(specification => specification.GroupName)
+                .ThenBy(specification => specification.Name)
+                .Select(specification => new ProductSpecificationResponse
+                {
+                    Id = specification.Id,
+                    Name = specification.Name,
+                    Value = specification.Value,
+                    GroupName = specification.GroupName,
+                    SortOrder = specification.SortOrder
+                })
+                .ToList(),
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         });
@@ -1110,6 +1767,11 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             Description = product.Description,
             SKU = product.SKU,
             Price = product.Price,
+            EffectivePrice = ProductPricingHelper.GetEffectivePrice(product, DateTime.UtcNow),
+            SalePrice = product.SalePrice,
+            SaleStartAtUtc = product.SaleStartAtUtc,
+            SaleEndAtUtc = product.SaleEndAtUtc,
+            IsSaleActive = ProductPricingHelper.IsSaleActive(product, DateTime.UtcNow),
             IsActive = product.IsActive,
             IsFeatured = product.IsFeatured,
             WeightKg = product.WeightKg,
@@ -1122,6 +1784,9 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             CategoryId = product.CategoryId,
             CategoryName = category.Name,
             CategorySlug = category.Slug,
+            BrandId = product.BrandId,
+            BrandName = product.Brand?.Name,
+            BrandSlug = product.Brand?.Slug,
             QuantityAvailable = summary.QuantityAvailable,
             QuantityReserved = summary.QuantityReserved,
             LowStockThreshold = summary.LowStockThreshold,
@@ -1129,8 +1794,80 @@ public sealed class ProductsController(ApplicationDbContext dbContext) : Control
             IsLowStock = summary.QuantityAvailable <= summary.LowStockThreshold,
             AverageRating = summary.AverageRating,
             ReviewsCount = summary.ReviewsCount,
+            Images = product.Images
+                .OrderBy(image => image.SortOrder)
+                .ThenByDescending(image => image.IsPrimary)
+                .ThenBy(image => image.CreatedAtUtc)
+                .Select(ToImageResponse)
+                .ToList(),
+            Specifications = product.Specifications
+                .OrderBy(specification => specification.SortOrder)
+                .ThenBy(specification => specification.GroupName)
+                .ThenBy(specification => specification.Name)
+                .Select(ToSpecificationResponse)
+                .ToList(),
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
+        };
+    }
+
+    private async Task ClearPrimaryImagesAsync(
+        Guid productId,
+        Guid? exceptImageId,
+        CancellationToken cancellationToken)
+    {
+        var primaryImages = await dbContext.ProductImages
+            .Where(image =>
+                image.ProductId == productId &&
+                image.IsPrimary &&
+                (!exceptImageId.HasValue || image.Id != exceptImageId.Value))
+            .ToListAsync(cancellationToken);
+
+        foreach (var image in primaryImages)
+        {
+            image.IsPrimary = false;
+        }
+    }
+
+    private static string? ValidateSpecification(
+        string name,
+        string value)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "Specification name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Specification value is required.";
+        }
+
+        return null;
+    }
+
+    private static ProductImageResponse ToImageResponse(ProductImage image)
+    {
+        return new ProductImageResponse
+        {
+            Id = image.Id,
+            ImageUrl = image.ImageUrl,
+            AltText = image.AltText,
+            IsPrimary = image.IsPrimary,
+            SortOrder = image.SortOrder,
+            CreatedAtUtc = image.CreatedAtUtc
+        };
+    }
+
+    private static ProductSpecificationResponse ToSpecificationResponse(ProductSpecification specification)
+    {
+        return new ProductSpecificationResponse
+        {
+            Id = specification.Id,
+            Name = specification.Name,
+            Value = specification.Value,
+            GroupName = specification.GroupName,
+            SortOrder = specification.SortOrder
         };
     }
 

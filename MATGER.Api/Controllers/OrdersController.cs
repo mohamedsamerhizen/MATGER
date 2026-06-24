@@ -23,7 +23,9 @@ public sealed class OrdersController(
     [HttpGet]
     public async Task<ActionResult<PaginatedResponse<OrderResponse>>> GetAll(
         [FromQuery] string? status = null,
+        [FromQuery] string? paymentStatus = null,
         [FromQuery] Guid? userId = null,
+        [FromQuery] string? customerEmail = null,
         [FromQuery] string? orderNumber = null,
         [FromQuery] string? couponCode = null,
         [FromQuery] DateTime? from = null,
@@ -46,6 +48,7 @@ public sealed class OrdersController(
 
         var query = dbContext.Orders
             .AsNoTracking()
+            .Include(order => order.User)
             .Include(order => order.Coupon)
             .Include(order => order.Items)
             .ThenInclude(item => item.ProductVariant)
@@ -76,6 +79,27 @@ public sealed class OrdersController(
             query = query.Where(order => order.Status == parsedStatus);
         }
 
+        if (!string.IsNullOrWhiteSpace(paymentStatus))
+        {
+            if (!Enum.TryParse<PaymentStatus>(paymentStatus.Trim(), ignoreCase: true, out var parsedPaymentStatus))
+            {
+                return BadRequest(Error(
+                    StatusCodes.Status400BadRequest,
+                    "Payment status is invalid."));
+            }
+
+            query = query.Where(order => order.Payments.Any(payment => payment.Status == parsedPaymentStatus));
+        }
+
+        if (canSeeAllOrders && !string.IsNullOrWhiteSpace(customerEmail))
+        {
+            var normalizedCustomerEmail = customerEmail.Trim();
+
+            query = query.Where(order =>
+                order.User.Email != null &&
+                order.User.Email.Contains(normalizedCustomerEmail));
+        }
+
         if (!string.IsNullOrWhiteSpace(orderNumber))
         {
             var normalizedOrderNumber = orderNumber.Trim();
@@ -90,6 +114,13 @@ public sealed class OrdersController(
             query = query.Where(order =>
                 order.Coupon != null &&
                 order.Coupon.Code == normalizedCouponCode);
+        }
+
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+        {
+            return BadRequest(Error(
+                StatusCodes.Status400BadRequest,
+                "From date cannot be later than to date."));
         }
 
         if (from.HasValue)

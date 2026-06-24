@@ -1,0 +1,51 @@
+@baseUrl = https://localhost:5001
+@adminEmail = admin@matger.local
+@adminPassword = Admin12345
+@customerEmail = customer01@matger.local
+@customerPassword = Demo12345
+@token = replace_with_admin_access_token
+
+### Login as demo admin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### Demo seed summary - requires admin token
+GET {{baseUrl}}/api/admin/demo-data/summary
+Authorization: Bearer {{token}}
+
+### Manually seed demo data - requires admin token
+POST {{baseUrl}}/api/admin/demo-data/seed
+Authorization: Bearer {{token}}
+
+### Admin dashboard stats after seed
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{token}}
+
+### Sales report after seed
+GET {{baseUrl}}/api/admin/dashboard/sales-report
+Authorization: Bearer {{token}}
+
+### Inventory health after seed
+GET {{baseUrl}}/api/inventory/intelligence/summary
+Authorization: Bearer {{token}}
+
+### Checkout consistency after seed
+GET {{baseUrl}}/api/admin/checkout-consistency/summary
+Authorization: Bearer {{token}}
+
+### Public products should now have rich catalog data
+GET {{baseUrl}}/api/products?page=1&pageSize=20
+
+### Login as demo customer
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{customerEmail}}",
+  "password": "{{customerPassword}}"
+}

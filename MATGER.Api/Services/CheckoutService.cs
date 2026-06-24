@@ -7,6 +7,7 @@ using MATGER.Api.DTOs.Checkout;
 using MATGER.Api.DTOs.Common;
 using MATGER.Api.Entities;
 using MATGER.Api.Enums;
+using MATGER.Api.Helpers;
 using MATGER.Api.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,8 @@ public sealed class CheckoutService(
     ApplicationDbContext dbContext,
     IAuditLogService auditLogService,
     ICouponService couponService,
-    IInventoryMovementService inventoryMovementService) : ICheckoutService
+    IInventoryMovementService inventoryMovementService,
+    IRiskSignalService riskSignalService) : ICheckoutService
 {
     private const string StartCheckoutEndpoint = "POST /api/checkout/start";
     private const string ConfirmPaymentEndpoint = "POST /api/checkout/confirm-payment";
@@ -210,6 +212,12 @@ public sealed class CheckoutService(
         var now = DateTime.UtcNow;
         var reservationExpiresAt = now.AddMinutes(15);
 
+        foreach (var item in cart.Items)
+        {
+            item.UnitPriceSnapshot = item.ProductVariant?.PriceOverride ??
+                                     ProductPricingHelper.GetEffectivePrice(item.Product, now);
+        }
+
         var subtotal = cart.Items.Sum(item => item.UnitPriceSnapshot * item.Quantity);
         var discountAmount = 0m;
         var shippingFee = shippingMethod?.BaseCost ?? 0m;
@@ -299,6 +307,7 @@ public sealed class CheckoutService(
                 VariantNameSnapshot = cartItem.ProductVariant?.Name,
                 VariantSkuSnapshot = cartItem.ProductVariant?.SKU,
                 UnitPrice = cartItem.UnitPriceSnapshot,
+                CostPriceSnapshot = cartItem.Product.CostPrice,
                 Quantity = cartItem.Quantity,
                 Total = orderItemTotal
             });
@@ -412,6 +421,11 @@ public sealed class CheckoutService(
             reason: "Checkout was started and order entered pending payment.",
             note: null,
             createdAt: now);
+
+        await riskSignalService.EvaluateOrderAsync(
+            order,
+            shippingAddress,
+            cancellationToken);
 
         await auditLogService.LogAsync(
             actorUserId: userId,

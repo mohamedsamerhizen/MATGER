@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -13,9 +14,8 @@ namespace MATGER.Tests.Support;
 
 public sealed class TestApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly string _databasePath = Path.Combine(
-        Path.GetTempPath(),
-        $"matger-tests-{Guid.NewGuid():N}.db");
+    private readonly string _databaseName = $"matger-tests-{Guid.NewGuid():N}";
+    private readonly InMemoryDatabaseRoot _databaseRoot = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -39,7 +39,10 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<ApplicationDbContext>(options =>
             {
-                options.UseSqlite($"Data Source={_databasePath}");
+                options
+                    .UseInMemoryDatabase(_databaseName, _databaseRoot)
+                    .ConfigureWarnings(warnings =>
+                        warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning));
             });
 
             using var provider = services.BuildServiceProvider();
@@ -67,22 +70,5 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
         return await action(dbContext);
     }
 
-    protected override void Dispose(bool disposing)
-    {
-        base.Dispose(disposing);
-
-        if (disposing)
-        {
-            try
-            {
-                if (File.Exists(_databasePath))
-                {
-                    File.Delete(_databasePath);
-                }
-            }
-            catch (IOException)
-            {
-            }
-        }
-    }
+    protected override void Dispose(bool disposing) => base.Dispose(disposing);
 }

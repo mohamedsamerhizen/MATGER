@@ -4,6 +4,7 @@ using MATGER.Api.DTOs.Cart;
 using MATGER.Api.DTOs.Common;
 using MATGER.Api.Entities;
 using MATGER.Api.Enums;
+using MATGER.Api.Helpers;
 using MATGER.Api.Identity;
 using MATGER.Api.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -154,7 +155,7 @@ public sealed class CartController(
         }
 
         var now = DateTime.UtcNow;
-        var unitPrice = variant?.PriceOverride ?? product.Price;
+        var unitPrice = variant?.PriceOverride ?? ProductPricingHelper.GetEffectivePrice(product, now);
 
         if (existingItem is null)
         {
@@ -287,9 +288,11 @@ public sealed class CartController(
                 "Requested quantity is greater than available stock."));
         }
 
+        var now = DateTime.UtcNow;
+
         item.Quantity = request.Quantity;
-        item.UnitPriceSnapshot = variant?.PriceOverride ?? product.Price;
-        item.UpdatedAt = DateTime.UtcNow;
+        item.UnitPriceSnapshot = variant?.PriceOverride ?? ProductPricingHelper.GetEffectivePrice(product, now);
+        item.UpdatedAt = now;
 
         await RefreshCartCouponAsync(cart, userId.Value);
 

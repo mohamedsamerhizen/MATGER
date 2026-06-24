@@ -1,365 +1,195 @@
 # MATGER — Advanced E-commerce Backend Engine
 
-MATGER is a production-style ASP.NET Core Web API for an e-commerce backend. It keeps a simple two-project structure while covering the kinds of workflows reviewers expect to see in a serious backend portfolio: authentication, catalog management, carts, checkout, inventory, returns, refunds, reporting, Docker, CI, and integration tests.
+MATGER is a production-style ASP.NET Core Web API for an e-commerce backend. It keeps a deliberately simple two-project structure while covering real commerce workflows: authentication, catalog, cart, checkout, mock payments, inventory, fulfillment, reporting, risk signals, wallet/store credit, loyalty points, demo seed data, Docker, CI, and integration tests.
 
-## Why This Project Matters
+The goal is not to show a basic CRUD project. The goal is to demonstrate backend judgement: authorization, state transitions, transaction safety, pricing snapshots, stock consistency, reporting, idempotency, and test coverage.
 
-This project demonstrates how a beginner-friendly .NET solution can still model real commerce behavior without becoming over-engineered. MATGER intentionally avoids Clean Architecture, MediatR, CQRS, payment providers, SMS, email, and frontend code. The focus is a readable API that handles authorization, state transitions, stock consistency, and testable business flows.
-
-## Tech Stack
-
-- ASP.NET Core Web API on .NET 10
-- EF Core with SQL Server
-- ASP.NET Core Identity
-- JWT authentication and refresh tokens
-- Swagger / Swashbuckle
-- Serilog console and file logging
-- Docker Compose for local SQL Server
-- xUnit integration tests with WebApplicationFactory and SQLite
-- GitHub Actions CI
-
-## Current Architecture
-
-The structure is intentionally small:
+## Project Structure
 
 ```text
 MATGER/
-  MATGER.Api/      ASP.NET Core API, EF Core DbContext, Identity, services, DTOs, controllers
-  MATGER.Tests/    xUnit integration tests and test helpers
+  MATGER.Api/      ASP.NET Core API, EF Core DbContext, Identity, controllers, services, DTOs
+  MATGER.Tests/    xUnit integration tests using WebApplicationFactory and EF Core InMemory
+  docs/            demo flows, workflows, security notes, GitHub checklist
 ```
 
-There are no extra application, domain, infrastructure, or frontend projects.
+MATGER intentionally avoids Clean Architecture, MediatR, CQRS, frontend/mobile code, external queues, real payment gateways, SMS, and email providers. The architecture is intentionally readable for reviewers.
 
-## Features
+## Tech Stack
 
-### Authentication & Authorization
+- .NET 10 / ASP.NET Core Web API
+- EF Core with SQL Server for development/runtime
+- EF Core InMemory provider for integration tests
+- ASP.NET Core Identity with role-based authorization
+- JWT access tokens and refresh tokens
+- Swagger/OpenAPI
+- Serilog console/file logging
+- Docker Compose for SQL Server
+- xUnit integration tests
+- GitHub Actions CI
 
-- Customer registration, login, logout, refresh tokens, and current-user endpoint.
-- Role-based policies for Admin, Customer, OrderManager, and InventoryManager.
-- Admin-only protection for dashboards, reporting, audit logs, refunds, internal order notes, commerce operations, inventory intelligence, and checkout consistency tools.
-- Customer ownership checks for carts, orders, addresses, returns, wishlist items, and reviews.
+## Main Roles
 
-### Users / Roles
+- `Admin`: full back-office access.
+- `Customer`: shopping, cart, checkout, orders, wallet, loyalty, wishlist, reviews.
+- `OrderManager`: fulfillment and order operations.
+- `InventoryManager`: inventory and stock-adjustment workflows.
 
-- ASP.NET Core Identity users with role seeding.
-- Development-only admin seeding for local work.
-- Strong password rules and unique email enforcement.
+## Demo Accounts
 
-### Products & Categories
+Development/demo seed creates these accounts:
 
-- Category CRUD and activation controls.
-- Product CRUD, activation, featured products, new arrivals, bulk status changes, search, filtering, sorting, and pagination.
-- Duplicate SKU protection across products and variants.
-- Public catalog responses hide inactive products and inactive variants.
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@matger.local` | `Admin12345` |
+| Order Manager | `order.manager@matger.local` | `Demo12345` |
+| Inventory Manager | `inventory.manager@matger.local` | `Demo12345` |
+| First Customer | `customer01@matger.local` | `Demo12345` |
 
-### Product Variants
+Demo seed runs only in Development when enabled.
 
-- Variant CRUD under products.
-- Variant SKU, price override, stock, low-stock threshold, active/inactive status, and stock adjustment support.
-- Variant-aware cart, checkout, order items, inventory reservation, and review flows.
+## Core Features
 
-### Wishlist / Favorites
+### Authentication and Security
 
-- Customer wishlist endpoints for adding, listing, and removing product favorites.
+- Register, login, refresh token, logout, and current user endpoints.
+- Role policies for Admin, Customer, OrderManager, and InventoryManager.
+- Inactive-user checks.
+- Rate limiting for authentication endpoints.
+- Swagger JWT bearer support.
+- Global exception middleware with consistent API errors.
+- Request tracing middleware.
 
-### Reviews & Moderation
+### Catalog
 
-- Customer product reviews with duplicate-review protection.
-- Review visibility controls and admin moderation endpoints.
-- Review creation requires an eligible delivered order.
+- Categories, brands, products, variants, images, specifications, featured/new-arrival listing.
+- Search, category filtering, brand filtering, price filtering using effective price, active-sale filtering, sorting, and pagination.
+- Public responses hide internal cost price.
+- Admin endpoints for product images, product specifications, sale windows, and price history.
 
-### Cart
+### Pricing and Profit
+
+- `CostPrice` and `CostPriceSnapshot` support.
+- Sale windows with active/upcoming/expired logic.
+- Effective price calculation.
+- Price history records.
+- Profit reports by product/category and low-margin visibility.
+
+### Cart and Checkout
 
 - Authenticated customer cart.
-- Variant-aware cart items.
-- Coupon application and removal.
-- Stock validation when adding or updating items.
+- Variant-aware items.
+- Coupon application.
+- Checkout creates orders, payments, payment attempts, and inventory reservations.
+- Checkout stores price and cost snapshots.
+- Mock payment confirmation/failure.
+- Idempotency support for sensitive payment confirmation.
 
-### Checkout
+### Orders, Fulfillment, Returns, Refunds
 
-- Checkout from the authenticated cart.
-- Address and shipping method validation.
-- Mock payment attempts.
-- Inventory reservation during checkout.
-- Empty cart and insufficient stock failures are handled safely.
-- Consistency checks protect against duplicate or stale checkout state.
-
-### Mock Payments
-
-- Payment confirmation and failure endpoints.
-- Idempotency key support for payment confirmation.
-- Paid, failed, and pending payment states.
-
-### Coupons
-
-- Admin coupon management.
-- Coupon validation and redemption limits.
-- Fixed and percentage discounts with usage limits.
-
-### Orders
-
-- Customer order listing and details.
-- Customer cancellation where state rules allow it.
-- Admin order summary, status history, internal notes, and admin cancellation.
-- OrderManager fulfillment transitions for processing, shipped, and delivered states.
-
-### Returns / Refunds
-
+- Customer order list/details with ownership checks.
+- Admin order summary, timeline, status history, and internal notes.
+- OrderManager fulfillment transitions: processing, shipped, delivered.
+- Picking list and order-level picking list.
+- CSV order export.
 - Customer return requests for eligible delivered orders.
-- Return policy window and quantity validation.
-- Admin return approval, rejection, and completion.
-- Admin-only refunds.
-- Double refund and unpaid refund protection.
+- Admin return approval/rejection/completion.
+- Admin refund protection against duplicate/unpaid refunds.
 
 ### Inventory
 
-- Admin-only inventory listing, low-stock view, stock adjustment, and movement history.
-- Inventory movement validation.
-- Variant stock and product stock are kept distinct.
+- Inventory listing and movements.
+- Inventory reservation cleanup background service.
+- Reorder planning with supplier data, reorder point, suggested reorder quantity, lead time, bin location, and severity.
+- Stock adjustment approval workflow with Pending/Approved/Rejected/Cancelled states.
+- Approval updates inventory and creates movement records.
 
-### Inventory Intelligence
+### Customer Intelligence
 
-- Admin-only inventory health summary.
-- Needs-attention view.
-- Top reserved product reporting.
+- Admin Customer 360 profile.
+- Customer segment calculation.
+- Internal customer notes visible only to Admin.
+- Risk signals for suspicious order/customer behavior.
 
-### Stock Reconciliation
+### Wallet and Loyalty
 
-- Admin commerce operation endpoints for identifying and fixing stock inconsistencies.
+- Customer wallet/store credit balance and transactions.
+- Admin wallet credit/debit with transaction recording and negative-balance protection.
+- Customer loyalty account and transactions.
+- Admin loyalty points adjustment and summary.
+- Loyalty points awarded on delivered orders.
 
-### Shipping
+### Operations Dashboard
 
-- Public active shipping method list.
-- Admin shipping method management.
-- Admin-only order shipping updates.
-- Shipping status updates are checked against order status.
+Admin dashboard includes:
 
-### Admin Dashboard and Reporting
-
-- Dashboard stats.
-- Sales reports.
-- Revenue chart data.
+- Operations summary.
+- Sales overview.
+- Inventory overview.
+- Sales report.
+- Profit report.
+- Revenue chart.
 - Top products.
 - Order status breakdown.
 - Coupon performance.
 - Customer insights.
-- Customer segmentation.
-- Abandoned cart reporting.
 
-### CSV Import / Export
+### Demo Seed Data
 
-- Admin product CSV import.
-- Product and inventory CSV exports.
-- Import validation for malformed rows, required fields, duplicate SKUs, prices, stock values, booleans, categories, and return window values.
+The demo seed creates a realistic commercial dataset:
 
-### Checkout Consistency
+- 24+ customers.
+- 10+ categories.
+- 120+ products.
+- Product variants, brands, images, specifications.
+- Cost prices, sale windows, price history.
+- Inventory, reorder data, low/critical/healthy stock.
+- 240+ orders with mixed states.
+- Payments, attempts, shipping, coupons, carts, wishlist, reviews.
+- Returns/refunds, inventory movements, stock adjustment requests.
+- Customer notes, risk signals, wallets, loyalty records.
 
-- Admin-only summary and issue endpoints.
-- Protected maintenance endpoint for expiring pending payments.
+The seeder is designed to be safe on repeated runs.
 
-### Security
-
-- JWT bearer authentication.
-- Role constants and policies are used consistently.
-- Admin operations are protected with Admin-only policies.
-- Customer routes enforce authenticated ownership.
-- Concurrency conflicts return a 409 API error response.
-- API error responses use the existing `ApiErrorResponse` shape where practical.
-
-### Tests
-
-- Integration tests run without SQL Server by using isolated SQLite databases.
-- Coverage includes authorization, admin access, catalog visibility, variant SKUs, cart, checkout, stock failures, order ownership, order transitions, returns, refunds, reviews, inventory, admin reporting, and checkout consistency.
-
-### Docker
-
-- Dockerfile builds the existing two-project solution and publishes `MATGER.Api`.
-- Docker Compose provides a local SQL Server container for development.
-
-### CI
-
-- GitHub Actions restores, builds, and tests the solution on every push and pull request.
-
-## How To Run Locally
-
-Prerequisites:
-
-- .NET 10 SDK
-- Docker Desktop or another Docker runtime
-- EF Core CLI tool
-
-Start SQL Server:
+## Run Locally
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up -d matger-sqlserver
+cd C:\Users\lenovo\Desktop\MATGER
+
+copy .env.example .env
+
+docker compose up -d
+
+dotnet restore .\MATGER.sln
+
+dotnet ef database update `
+  --project .\MATGER.Api\MATGER.Api.csproj `
+  --startup-project .\MATGER.Api\MATGER.Api.csproj
+
+dotnet run --project .\MATGER.Api\MATGER.Api.csproj
 ```
 
-Apply EF Core migrations:
-
-```powershell
-dotnet ef database update --project .\MATGER.Api --startup-project .\MATGER.Api
-```
-
-Run the API:
-
-```powershell
-dotnet run --project .\MATGER.Api
-```
-
-Swagger is available in Development at:
+Swagger:
 
 ```text
-https://localhost:5001/swagger
-http://localhost:5000/swagger
+http://localhost:5179/swagger
 ```
 
-The exact ports can vary by launch profile. Check `MATGER.Api/Properties/launchSettings.json` if needed.
-
-## Docker Setup
-
-The included Compose file starts SQL Server:
+## Run Tests
 
 ```powershell
-docker compose up -d
-```
+cd C:\Users\lenovo\Desktop\MATGER
 
-The API Docker image can be built with:
-
-```powershell
-docker build -t matger-api .
-```
-
-The API does not automatically apply migrations at startup. Apply migrations before running against a new SQL Server database.
-
-## Configuration
-
-`appsettings.json` contains development-safe defaults only. For real deployments, override these values through environment variables or secret storage:
-
-- `ConnectionStrings__DefaultConnection`
-- `Jwt__Issuer`
-- `Jwt__Audience`
-- `Jwt__SecretKey`
-- `Jwt__AccessTokenExpirationMinutes`
-
-`.env.example` is safe to commit and is used as a local template. `.env` is ignored by Git.
-
-## EF Core Commands
-
-Create a migration:
-
-```powershell
-dotnet ef migrations add MigrationName --project .\MATGER.Api --startup-project .\MATGER.Api
-```
-
-Apply migrations:
-
-```powershell
-dotnet ef database update --project .\MATGER.Api --startup-project .\MATGER.Api
-```
-
-Drop the local database when you want a clean start:
-
-```powershell
-dotnet ef database drop --project .\MATGER.Api --startup-project .\MATGER.Api --force
-```
-
-## Build And Test
-
-```powershell
 dotnet restore .\MATGER.sln
 dotnet build .\MATGER.sln
 dotnet test .\MATGER.sln
 ```
 
-## GitHub Actions CI
+Current expected test count after final expansion stage: `45/45` before any future additions.
 
-The workflow at `.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It restores the solution, builds it in Release configuration, and runs the xUnit integration test suite.
+## Important Notes
 
-## Default Roles And Local Seeding
-
-The API seeds these roles at startup:
-
-- `Admin`
-- `Customer`
-- `OrderManager`
-- `InventoryManager`
-
-In Development only, the API seeds an admin user:
-
-```text
-Email: admin@matger.local
-Password: Admin12345
-```
-
-Use this only for local development. Do not expose a Development environment publicly.
-
-## Important Endpoints Overview
-
-- Auth: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/auth/me`
-- Products: `GET /api/products`, `GET /api/products/featured`, `POST /api/products`, `PATCH /api/products/{id}`
-- Variants: `GET /api/products/{productId}/variants`, `POST /api/products/{productId}/variants`, `PATCH /api/products/{productId}/variants/{variantId}`
-- Cart: `GET /api/cart`, `POST /api/cart/items`, `PATCH /api/cart/items/{itemId}`, `POST /api/cart/coupon`
-- Checkout: `POST /api/checkout/start`, `POST /api/checkout/confirm-payment`, `POST /api/checkout/fail-payment`
-- Orders: `GET /api/orders`, `GET /api/orders/{id}`, `POST /api/orders/{id}/cancel`, `POST /api/orders/{id}/mark-shipped`
-- Returns: `POST /api/orders/{orderId}/returns`, `GET /api/orders/{orderId}/returns`, `GET /api/returns`
-- Refunds: `POST /api/orders/{orderId}/refund`, `GET /api/refunds`
-- Reviews: `GET /api/products/{productId}/reviews`, `POST /api/products/{productId}/reviews`, `GET /api/admin/product-reviews`
-- Inventory: `GET /api/inventory`, `GET /api/inventory/low-stock`, `POST /api/inventory/{productId}/adjust`
-- Admin dashboard: `GET /api/admin/dashboard/stats`, `GET /api/admin/dashboard/sales-report`, `GET /api/admin/dashboard/revenue-chart`
-- Commerce operations: `GET /api/admin/commerce-operations/stock-reconciliation`, `POST /api/admin/commerce-operations/imports/products.csv`
-- Checkout consistency: `GET /api/admin/checkout-consistency/summary`, `GET /api/admin/checkout-consistency/issues`
-
-## Screenshots
-
-Capture the real screenshots manually after the API, SQL Server container, and Swagger are running. Save each image under `docs/screenshots/` using the exact filenames below.
-
-![Swagger home](docs/screenshots/swagger-home.png)
-
-![Swagger auth endpoints](docs/screenshots/swagger-auth.png)
-
-![Swagger products endpoints](docs/screenshots/swagger-products.png)
-
-![Swagger orders endpoints](docs/screenshots/swagger-orders.png)
-
-![Swagger admin dashboard endpoints](docs/screenshots/swagger-admin-dashboard.png)
-
-![Swagger commerce operations endpoints](docs/screenshots/swagger-commerce-operations.png)
-
-![Tests passed](docs/screenshots/tests-passed.png)
-
-![Docker running](docs/screenshots/docker-running.png)
-
-![Database update done](docs/screenshots/database-update-done.png)
-
-See `docs/screenshots/README.md` for the screenshot capture checklist.
-
-## GitHub Final Checklist
-
-Before pushing the final repository, run:
-
-```powershell
-dotnet build .\MATGER.sln
-dotnet test .\MATGER.sln
-docker compose up -d matger-sqlserver
-dotnet ef database update --project .\MATGER.Api --startup-project .\MATGER.Api
-dotnet run --project .\MATGER.Api
-```
-
-See `docs/GITHUB_CHECKLIST.md` for the publish checklist.
-
-## Postman Collection
-
-No Postman collection is currently included. Swagger is the primary API exploration surface.
-
-## Future Improvements
-
-- Add a Postman collection or HTTP file for common flows.
-- Add rate limiting for authentication endpoints.
-- Add refresh-token rotation tests around suspicious reuse scenarios.
-- Add richer reporting export formats.
-- Add Docker Compose API profile once database migration orchestration is intentionally designed.
-
-## Portfolio Value
-
-MATGER shows a reviewer that you can build more than CRUD. It demonstrates API design, EF Core modeling, Identity, JWT security, role-based authorization, order and inventory state rules, CSV handling, Docker-based local infrastructure, CI, and meaningful integration tests while keeping the codebase understandable.
+- The project uses a mock payment flow, not a real payment gateway.
+- Demo credentials are for local development only.
+- Do not commit `.env`, `bin/`, `obj/`, `logs/`, `TestResults/`, or generated ZIP files.
+- Replace development JWT secrets and SQL credentials before any real deployment.

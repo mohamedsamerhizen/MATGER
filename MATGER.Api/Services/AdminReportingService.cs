@@ -27,90 +27,324 @@ public sealed class AdminReportingService(
     {
         var today = DateTime.UtcNow.Date;
 
-        var orders = dbContext.Orders.AsNoTracking();
+        var orderStatusCounts = await dbContext.Orders
+            .AsNoTracking()
+            .GroupBy(order => order.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                OrdersCount = group.Count()
+            })
+            .ToDictionaryAsync(
+                item => item.Status,
+                item => item.OrdersCount,
+                cancellationToken);
+
+        var revenueSummary = await dbContext.Orders
+            .AsNoTracking()
+            .Where(order => RevenueStatuses.Contains(order.Status))
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalRevenue = group.Sum(order => order.Total),
+                TodayRevenue = group.Sum(order =>
+                    order.PaidAt.HasValue && order.PaidAt.Value >= today
+                        ? order.Total
+                        : 0m)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var totalRefundedAmount = await dbContext.Refunds
+            .AsNoTracking()
+            .Where(refund => refund.Status == RefundStatus.Completed)
+            .SumAsync(refund => refund.Amount, cancellationToken);
+
+        var pendingReturnRequests = await dbContext.ReturnRequests
+            .AsNoTracking()
+            .CountAsync(
+                returnRequest => returnRequest.Status == ReturnRequestStatus.Requested,
+                cancellationToken);
+
+        var lowStockProducts = await dbContext.InventoryItems
+            .AsNoTracking()
+            .CountAsync(
+                item =>
+                    item.Product.IsActive &&
+                    item.Product.Category.IsActive &&
+                    item.QuantityAvailable <= item.LowStockThreshold,
+                cancellationToken);
+
+        var activeCoupons = await dbContext.Coupons
+            .AsNoTracking()
+            .CountAsync(coupon => coupon.IsActive, cancellationToken);
 
         var customers = await userManager.GetUsersInRoleAsync(ApplicationRoles.Customer);
 
         return new AdminDashboardStatsResponse
         {
-            TotalOrders = await orders.CountAsync(cancellationToken),
-
-            PendingPaymentOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.PendingPayment,
-                cancellationToken),
-
-            PaidOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Paid,
-                cancellationToken),
-
-            ProcessingOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Processing,
-                cancellationToken),
-
-            ShippedOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Shipped,
-                cancellationToken),
-
-            DeliveredOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Delivered,
-                cancellationToken),
-
-            CancelledOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Cancelled,
-                cancellationToken),
-
-            PaymentFailedOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.PaymentFailed,
-                cancellationToken),
-
-            ReturnRequestedOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.ReturnRequested,
-                cancellationToken),
-
-            ReturnedOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Returned,
-                cancellationToken),
-
-            RefundedOrders = await orders.CountAsync(
-                order => order.Status == OrderStatus.Refunded,
-                cancellationToken),
-
-            TotalRevenue = await orders
-                .Where(order => RevenueStatuses.Contains(order.Status))
-                .SumAsync(order => order.Total, cancellationToken),
-
-            TodayRevenue = await orders
-                .Where(order =>
-                    RevenueStatuses.Contains(order.Status) &&
-                    order.PaidAt.HasValue &&
-                    order.PaidAt.Value >= today)
-                .SumAsync(order => order.Total, cancellationToken),
-
-            TotalRefundedAmount = await dbContext.Refunds
-                .AsNoTracking()
-                .Where(refund => refund.Status == RefundStatus.Completed)
-                .SumAsync(refund => refund.Amount, cancellationToken),
-
-            PendingReturnRequests = await dbContext.ReturnRequests
-                .AsNoTracking()
-                .CountAsync(
-                    returnRequest => returnRequest.Status == ReturnRequestStatus.Requested,
-                    cancellationToken),
-
-            LowStockProducts = await dbContext.InventoryItems
-                .AsNoTracking()
-                .CountAsync(
-                    item =>
-                        item.Product.IsActive &&
-                        item.Product.Category.IsActive &&
-                        item.QuantityAvailable <= item.LowStockThreshold,
-                    cancellationToken),
-
+            TotalOrders = orderStatusCounts.Values.Sum(),
+            PendingPaymentOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.PendingPayment),
+            PaidOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Paid),
+            ProcessingOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Processing),
+            ShippedOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Shipped),
+            DeliveredOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Delivered),
+            CancelledOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Cancelled),
+            PaymentFailedOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.PaymentFailed),
+            ReturnRequestedOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.ReturnRequested),
+            ReturnedOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Returned),
+            RefundedOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Refunded),
+            TotalRevenue = revenueSummary?.TotalRevenue ?? 0m,
+            TodayRevenue = revenueSummary?.TodayRevenue ?? 0m,
+            TotalRefundedAmount = totalRefundedAmount,
+            PendingReturnRequests = pendingReturnRequests,
+            LowStockProducts = lowStockProducts,
             ActiveCustomers = customers.Count(customer => customer.IsActive),
+            ActiveCoupons = activeCoupons
+        };
+    }
 
-            ActiveCoupons = await dbContext.Coupons
-                .AsNoTracking()
-                .CountAsync(coupon => coupon.IsActive, cancellationToken)
+    public async Task<AdminOperationsSummaryResponse> GetOperationsSummaryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var orderStatusCounts = await dbContext.Orders
+            .AsNoTracking()
+            .GroupBy(order => order.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                Count = group.Count()
+            })
+            .ToDictionaryAsync(item => item.Status, item => item.Count, cancellationToken);
+
+        var lowStockCount = await dbContext.InventoryItems
+            .AsNoTracking()
+            .CountAsync(
+                item =>
+                    item.Product.IsActive &&
+                    item.Product.Category.IsActive &&
+                    item.QuantityAvailable <= item.LowStockThreshold,
+                cancellationToken);
+
+        var criticalStockCount = await dbContext.InventoryItems
+            .AsNoTracking()
+            .CountAsync(
+                item =>
+                    item.Product.IsActive &&
+                    item.Product.Category.IsActive &&
+                    item.QuantityAvailable <= 0,
+                cancellationToken);
+
+        var pendingReturns = await dbContext.ReturnRequests
+            .AsNoTracking()
+            .CountAsync(
+                returnRequest => returnRequest.Status == ReturnRequestStatus.Requested,
+                cancellationToken);
+
+        var pendingRefunds = await dbContext.Refunds
+            .AsNoTracking()
+            .CountAsync(
+                refund => refund.Status == RefundStatus.Pending,
+                cancellationToken);
+
+        var openRiskSignals = await dbContext.RiskSignals
+            .AsNoTracking()
+            .CountAsync(
+                signal => signal.Status == RiskSignalStatus.Open,
+                cancellationToken);
+
+        var pendingStockAdjustmentRequests = await dbContext.StockAdjustmentRequests
+            .AsNoTracking()
+            .CountAsync(
+                request => request.Status == StockAdjustmentRequestStatus.Pending,
+                cancellationToken);
+
+        return new AdminOperationsSummaryResponse
+        {
+            PendingOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.PendingPayment),
+            PaidAwaitingProcessingOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Paid),
+            ProcessingOrders = GetOrderStatusCount(orderStatusCounts, OrderStatus.Processing),
+            LowStockCount = lowStockCount,
+            CriticalStockCount = criticalStockCount,
+            PendingReturns = pendingReturns,
+            PendingRefunds = pendingRefunds,
+            OpenRiskSignals = openRiskSignals,
+            PendingStockAdjustmentRequests = pendingStockAdjustmentRequests,
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+    }
+
+    public async Task<AdminSalesOverviewResponse> GetSalesOverviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var tomorrow = today.AddDays(1);
+        var last7Days = today.AddDays(-6);
+        var last30Days = today.AddDays(-29);
+
+        var revenueOrders = dbContext.Orders
+            .AsNoTracking()
+            .Where(order =>
+                RevenueStatuses.Contains(order.Status) &&
+                order.PaidAt.HasValue &&
+                order.PaidAt.Value >= last30Days &&
+                order.PaidAt.Value < tomorrow);
+
+        var salesToday = await revenueOrders
+            .Where(order => order.PaidAt!.Value >= today)
+            .SumAsync(order => order.Total, cancellationToken);
+
+        var salesLast7Days = await revenueOrders
+            .Where(order => order.PaidAt!.Value >= last7Days)
+            .SumAsync(order => order.Total, cancellationToken);
+
+        var salesLast30Days = await revenueOrders
+            .SumAsync(order => order.Total, cancellationToken);
+
+        var ordersToday = await revenueOrders
+            .CountAsync(order => order.PaidAt!.Value >= today, cancellationToken);
+
+        var ordersLast7Days = await revenueOrders
+            .CountAsync(order => order.PaidAt!.Value >= last7Days, cancellationToken);
+
+        var ordersLast30Days = await revenueOrders
+            .CountAsync(cancellationToken);
+
+        var refundAmountLast30Days = await dbContext.Refunds
+            .AsNoTracking()
+            .Where(refund =>
+                refund.Status == RefundStatus.Completed &&
+                (refund.CompletedAt ?? refund.CreatedAt) >= last30Days &&
+                (refund.CompletedAt ?? refund.CreatedAt) < tomorrow)
+            .SumAsync(refund => refund.Amount, cancellationToken);
+
+        return new AdminSalesOverviewResponse
+        {
+            SalesToday = salesToday,
+            SalesLast7Days = salesLast7Days,
+            SalesLast30Days = salesLast30Days,
+            OrdersToday = ordersToday,
+            OrdersLast7Days = ordersLast7Days,
+            OrdersLast30Days = ordersLast30Days,
+            AverageOrderValueLast30Days = ordersLast30Days == 0
+                ? 0m
+                : Math.Round(salesLast30Days / ordersLast30Days, 2),
+            RefundAmountLast30Days = refundAmountLast30Days,
+            RefundRateLast30Days = salesLast30Days == 0m
+                ? 0m
+                : Math.Round(refundAmountLast30Days / salesLast30Days * 100m, 2),
+            GeneratedAtUtc = now
+        };
+    }
+
+    public async Task<AdminInventoryOverviewResponse> GetInventoryOverviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var deadStockCutoff = DateTime.UtcNow.Date.AddDays(-90);
+
+        var soldProductIds = await dbContext.OrderItems
+            .AsNoTracking()
+            .Where(item =>
+                RevenueStatuses.Contains(item.Order.Status) &&
+                item.Order.PaidAt.HasValue &&
+                item.Order.PaidAt.Value >= deadStockCutoff)
+            .Select(item => item.ProductId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var soldProductIdsSet = soldProductIds.ToHashSet();
+
+        var inventory = await dbContext.InventoryItems
+            .AsNoTracking()
+            .Where(item => item.Product.IsActive && item.Product.Category.IsActive)
+            .Select(item => new
+            {
+                item.Id,
+                item.ProductId,
+                ProductName = item.Product.Name,
+                ProductSku = item.Product.SKU,
+                item.QuantityAvailable,
+                item.QuantityReserved,
+                item.LowStockThreshold,
+                ProductCostPrice = item.Product.CostPrice ?? 0m,
+                ProductPrice = item.Product.Price
+            })
+            .ToListAsync(cancellationToken);
+
+        var topReservedItems = inventory
+            .Where(item => item.QuantityReserved > 0)
+            .OrderByDescending(item => item.QuantityReserved)
+            .ThenBy(item => item.QuantityAvailable)
+            .ThenBy(item => item.ProductName)
+            .Take(10)
+            .Select(item =>
+            {
+                var quantityOnHand = item.QuantityAvailable + item.QuantityReserved;
+                var reservedSharePercentage = quantityOnHand == 0
+                    ? 0m
+                    : Math.Round((decimal)item.QuantityReserved / quantityOnHand * 100m, 2);
+
+                return new AdminTopReservedInventoryItemResponse
+                {
+                    InventoryItemId = item.Id,
+                    ProductId = item.ProductId,
+                    ProductName = item.ProductName,
+                    ProductSku = item.ProductSku,
+                    QuantityAvailable = item.QuantityAvailable,
+                    QuantityReserved = item.QuantityReserved,
+                    QuantityOnHand = quantityOnHand,
+                    ReservedSharePercentage = reservedSharePercentage
+                };
+            })
+            .ToList();
+
+        return new AdminInventoryOverviewResponse
+        {
+            TotalInventoryItems = inventory.Count,
+            LowStockCount = inventory.Count(item => item.QuantityAvailable <= item.LowStockThreshold),
+            CriticalStockCount = inventory.Count(item => item.QuantityAvailable <= 0),
+            DeadStockCount = inventory.Count(item =>
+                item.QuantityAvailable > 0 && !soldProductIdsSet.Contains(item.ProductId)),
+            ReservedInventoryItems = inventory.Count(item => item.QuantityReserved > 0),
+            TotalQuantityAvailable = inventory.Sum(item => item.QuantityAvailable),
+            TotalQuantityReserved = inventory.Sum(item => item.QuantityReserved),
+            TotalQuantityOnHand = inventory.Sum(item => item.QuantityAvailable + item.QuantityReserved),
+            EstimatedCostValue = inventory.Sum(item =>
+                (item.QuantityAvailable + item.QuantityReserved) * item.ProductCostPrice),
+            EstimatedRetailValue = inventory.Sum(item =>
+                (item.QuantityAvailable + item.QuantityReserved) * item.ProductPrice),
+            TopReservedItems = topReservedItems,
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+    }
+
+    private static int GetOrderStatusCount(
+        IReadOnlyDictionary<OrderStatus, int> orderStatusCounts,
+        OrderStatus status)
+    {
+        return orderStatusCounts.TryGetValue(status, out var count)
+            ? count
+            : 0;
+    }
+
+    private static decimal CalculateMarginPercentage(decimal revenue, decimal grossProfit)
+    {
+        return revenue == 0m
+            ? 0m
+            : Math.Round(grossProfit / revenue * 100m, 2);
+    }
+
+    private static AdminLowMarginProductResponse ToLowMarginProduct(AdminProfitByProductResponse product)
+    {
+        return new AdminLowMarginProductResponse
+        {
+            ProductId = product.ProductId,
+            ProductName = product.ProductName,
+            ProductSku = product.ProductSku,
+            Revenue = product.Revenue,
+            Cost = product.Cost,
+            GrossProfit = product.GrossProfit,
+            GrossMarginPercentage = product.GrossMarginPercentage
         };
     }
 
@@ -218,6 +452,126 @@ public sealed class AdminReportingService(
             AverageOrderValue = revenueOrdersCount == 0
                 ? 0m
                 : Math.Round(grossRevenue / revenueOrdersCount, 2)
+        };
+    }
+
+    public async Task<AdminProfitReportResponse> GetProfitReportAsync(
+        DateTime from,
+        DateTime to,
+        CancellationToken cancellationToken = default)
+    {
+        var fromInclusive = from.Date;
+        var toExclusive = to.Date.AddDays(1);
+
+        var orderItems = await dbContext.OrderItems
+            .AsNoTracking()
+            .Where(item =>
+                RevenueStatuses.Contains(item.Order.Status) &&
+                item.Order.PaidAt.HasValue &&
+                item.Order.PaidAt.Value >= fromInclusive &&
+                item.Order.PaidAt.Value < toExclusive)
+            .Select(item => new
+            {
+                item.ProductId,
+                ProductName = item.ProductNameSnapshot,
+                ProductSku = item.ProductSkuSnapshot,
+                item.Product.CategoryId,
+                CategoryName = item.Product.Category.Name,
+                item.Quantity,
+                Revenue = item.Total,
+                Cost = (item.CostPriceSnapshot ?? 0m) * item.Quantity
+            })
+            .ToListAsync(cancellationToken);
+
+        var revenue = orderItems.Sum(item => item.Revenue);
+        var cost = orderItems.Sum(item => item.Cost);
+        var grossProfit = revenue - cost;
+
+        var profitByProduct = orderItems
+            .GroupBy(item => new
+            {
+                item.ProductId,
+                item.ProductName,
+                item.ProductSku
+            })
+            .Select(group =>
+            {
+                var productRevenue = group.Sum(item => item.Revenue);
+                var productCost = group.Sum(item => item.Cost);
+                var productGrossProfit = productRevenue - productCost;
+
+                return new AdminProfitByProductResponse
+                {
+                    ProductId = group.Key.ProductId,
+                    ProductName = group.Key.ProductName,
+                    ProductSku = group.Key.ProductSku,
+                    QuantitySold = group.Sum(item => item.Quantity),
+                    Revenue = productRevenue,
+                    Cost = productCost,
+                    GrossProfit = productGrossProfit,
+                    GrossMarginPercentage = CalculateMarginPercentage(productRevenue, productGrossProfit)
+                };
+            })
+            .OrderByDescending(item => item.GrossProfit)
+            .ThenByDescending(item => item.Revenue)
+            .ThenBy(item => item.ProductName)
+            .Take(25)
+            .ToList();
+
+        var profitByCategory = orderItems
+            .GroupBy(item => new
+            {
+                item.CategoryId,
+                item.CategoryName
+            })
+            .Select(group =>
+            {
+                var categoryRevenue = group.Sum(item => item.Revenue);
+                var categoryCost = group.Sum(item => item.Cost);
+                var categoryGrossProfit = categoryRevenue - categoryCost;
+
+                return new AdminProfitByCategoryResponse
+                {
+                    CategoryId = group.Key.CategoryId,
+                    CategoryName = group.Key.CategoryName,
+                    QuantitySold = group.Sum(item => item.Quantity),
+                    Revenue = categoryRevenue,
+                    Cost = categoryCost,
+                    GrossProfit = categoryGrossProfit,
+                    GrossMarginPercentage = CalculateMarginPercentage(categoryRevenue, categoryGrossProfit)
+                };
+            })
+            .OrderByDescending(item => item.GrossProfit)
+            .ThenBy(item => item.CategoryName)
+            .ToList();
+
+        var lowMarginProducts = profitByProduct
+            .Where(item => item.GrossProfit >= 0m && item.GrossMarginPercentage < 10m)
+            .OrderBy(item => item.GrossMarginPercentage)
+            .ThenBy(item => item.ProductName)
+            .Select(ToLowMarginProduct)
+            .ToList();
+
+        var negativeMarginProducts = profitByProduct
+            .Where(item => item.GrossProfit < 0m)
+            .OrderBy(item => item.GrossMarginPercentage)
+            .ThenBy(item => item.ProductName)
+            .Select(ToLowMarginProduct)
+            .ToList();
+
+        return new AdminProfitReportResponse
+        {
+            From = fromInclusive,
+            To = to.Date,
+            GeneratedAt = DateTime.UtcNow,
+            Revenue = revenue,
+            Cost = cost,
+            GrossProfit = grossProfit,
+            GrossMarginPercentage = CalculateMarginPercentage(revenue, grossProfit),
+            ProfitByProduct = profitByProduct,
+            ProfitByCategory = profitByCategory,
+            LowMarginProducts = lowMarginProducts,
+            NegativeMarginProducts = negativeMarginProducts
         };
     }
 
@@ -567,4 +921,3 @@ public sealed class AdminReportingService(
             totalCount);
     }
 }
-

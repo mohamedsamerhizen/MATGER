@@ -12,7 +12,8 @@ namespace MATGER.Api.Services;
 public sealed class OrderFulfillmentService(
     ApplicationDbContext dbContext,
     IAuditLogService auditLogService,
-    IInventoryMovementService inventoryMovementService) : IOrderFulfillmentService
+    IInventoryMovementService inventoryMovementService,
+    ILoyaltyService loyaltyService) : IOrderFulfillmentService
 {
     public async Task<ActionResult<OrderStateChangedResponse>> CancelAsync(
         Guid orderId,
@@ -379,6 +380,11 @@ public sealed class OrderFulfillmentService(
                     ? "Order was marked as shipped."
                     : "Order was marked as delivered.",
                 cancellationToken: cancellationToken);
+        }
+
+        if (targetStatus == OrderStatus.Delivered)
+        {
+            await loyaltyService.AwardForDeliveredOrderAsync(order, cancellationToken);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

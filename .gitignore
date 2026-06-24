@@ -12,6 +12,8 @@ obj/
 .env
 .env.*
 !.env.example
+appsettings.Local.json
+**/appsettings.Local.json
 
 # Docker SQL Server local data, if a bind-mounted folder is used later
 sqlserver-data/
@@ -37,3 +39,12 @@ _backup_before_simplification_*/
 # User-specific IDE files
 *.user
 *.suo
+
+# Generated packages and local archives
+*.zip
+*.7z
+*.rar
+
+# Logs from nested application folders
+**/logs/
+*.log

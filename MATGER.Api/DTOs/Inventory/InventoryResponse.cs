@@ -20,6 +20,18 @@ public sealed class InventoryResponse
 
     public bool IsLowStock => QuantityAvailable <= LowStockThreshold;
 
+    public string? SupplierName { get; init; }
+
+    public string? SupplierSku { get; init; }
+
+    public int? ReorderPoint { get; init; }
+
+    public int? ReorderQuantity { get; init; }
+
+    public int? LeadTimeDays { get; init; }
+
+    public string? BinLocation { get; init; }
+
     public string RowVersion { get; init; } = string.Empty;
 
     public DateTime CreatedAt { get; init; }

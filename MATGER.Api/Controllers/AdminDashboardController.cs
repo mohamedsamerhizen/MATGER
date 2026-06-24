@@ -24,6 +24,33 @@ public sealed class AdminDashboardController(
         return Ok(response);
     }
 
+    [HttpGet("operations-summary")]
+    public async Task<ActionResult<AdminOperationsSummaryResponse>> GetOperationsSummary(
+        CancellationToken cancellationToken)
+    {
+        var response = await adminReportingService.GetOperationsSummaryAsync(cancellationToken);
+
+        return Ok(response);
+    }
+
+    [HttpGet("sales-overview")]
+    public async Task<ActionResult<AdminSalesOverviewResponse>> GetSalesOverview(
+        CancellationToken cancellationToken)
+    {
+        var response = await adminReportingService.GetSalesOverviewAsync(cancellationToken);
+
+        return Ok(response);
+    }
+
+    [HttpGet("inventory-overview")]
+    public async Task<ActionResult<AdminInventoryOverviewResponse>> GetInventoryOverview(
+        CancellationToken cancellationToken)
+    {
+        var response = await adminReportingService.GetInventoryOverviewAsync(cancellationToken);
+
+        return Ok(response);
+    }
+
     [HttpGet("sales-report")]
     public async Task<ActionResult<AdminSalesReportResponse>> GetSalesReport(
         [FromQuery] DateTime? from = null,
@@ -40,6 +67,29 @@ public sealed class AdminDashboardController(
         }
 
         var response = await adminReportingService.GetSalesReportAsync(
+            fromDate,
+            toDate,
+            cancellationToken);
+
+        return Ok(response);
+    }
+
+    [HttpGet("profit-report")]
+    public async Task<ActionResult<AdminProfitReportResponse>> GetProfitReport(
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        CancellationToken cancellationToken = default)
+    {
+        var (fromDate, toDate) = NormalizeDateRange(from, to);
+
+        var validationError = ValidateDateRange(fromDate, toDate);
+
+        if (validationError is not null)
+        {
+            return BadRequest(Error(StatusCodes.Status400BadRequest, validationError));
+        }
+
+        var response = await adminReportingService.GetProfitReportAsync(
             fromDate,
             toDate,
             cancellationToken);

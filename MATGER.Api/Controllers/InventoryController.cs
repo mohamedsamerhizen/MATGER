@@ -301,6 +301,12 @@ public sealed class InventoryController(
             QuantityAvailable = item.QuantityAvailable,
             QuantityReserved = item.QuantityReserved,
             LowStockThreshold = item.LowStockThreshold,
+            SupplierName = item.SupplierName,
+            SupplierSku = item.SupplierSku,
+            ReorderPoint = item.ReorderPoint,
+            ReorderQuantity = item.ReorderQuantity,
+            LeadTimeDays = item.LeadTimeDays,
+            BinLocation = item.BinLocation,
             RowVersion = Convert.ToBase64String(item.RowVersion),
             CreatedAt = item.CreatedAt,
             UpdatedAt = item.UpdatedAt

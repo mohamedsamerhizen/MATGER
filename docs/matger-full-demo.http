@@ -1,0 +1,178 @@
+@baseUrl = http://localhost:5179
+@adminToken = REPLACE_WITH_ADMIN_TOKEN
+@customerToken = REPLACE_WITH_CUSTOMER_TOKEN
+@customerId = REPLACE_WITH_CUSTOMER_ID
+@productId = REPLACE_WITH_PRODUCT_ID
+@orderId = REPLACE_WITH_ORDER_ID
+@addressId = REPLACE_WITH_ADDRESS_ID
+@shippingMethodId = REPLACE_WITH_SHIPPING_METHOD_ID
+@riskSignalId = REPLACE_WITH_RISK_SIGNAL_ID
+@stockAdjustmentRequestId = REPLACE_WITH_STOCK_ADJUSTMENT_REQUEST_ID
+
+### Admin login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@matger.local",
+  "password": "Admin12345"
+}
+
+### Customer login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "customer01@matger.local",
+  "password": "Demo12345"
+}
+
+### Current user
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{customerToken}}
+
+### Public products
+GET {{baseUrl}}/api/products?page=1&pageSize=10
+
+### Product search and effective price sorting
+GET {{baseUrl}}/api/products?search=phone&activeSaleOnly=true&sortBy=price_asc&page=1&pageSize=10
+
+### Product details
+GET {{baseUrl}}/api/products/{{productId}}
+
+### Customer cart
+GET {{baseUrl}}/api/cart
+Authorization: Bearer {{customerToken}}
+
+### Add cart item
+POST {{baseUrl}}/api/cart/items
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantity": 1
+}
+
+### Start checkout
+POST {{baseUrl}}/api/checkout/start
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "shippingAddressId": "{{addressId}}",
+  "shippingMethodId": "{{shippingMethodId}}"
+}
+
+### Confirm mock payment
+POST {{baseUrl}}/api/checkout/confirm-payment
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+Idempotency-Key: demo-confirm-payment-001
+
+{
+  "orderId": "{{orderId}}"
+}
+
+### Customer orders
+GET {{baseUrl}}/api/orders
+Authorization: Bearer {{customerToken}}
+
+### Admin dashboard stats
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+### Operations summary
+GET {{baseUrl}}/api/admin/dashboard/operations-summary
+Authorization: Bearer {{adminToken}}
+
+### Sales overview
+GET {{baseUrl}}/api/admin/dashboard/sales-overview
+Authorization: Bearer {{adminToken}}
+
+### Inventory overview
+GET {{baseUrl}}/api/admin/dashboard/inventory-overview
+Authorization: Bearer {{adminToken}}
+
+### Profit report
+GET {{baseUrl}}/api/admin/dashboard/profit-report
+Authorization: Bearer {{adminToken}}
+
+### Reorder needed
+GET {{baseUrl}}/api/admin/inventory/reorder-needed
+Authorization: Bearer {{adminToken}}
+
+### Create stock adjustment request
+POST {{baseUrl}}/api/admin/inventory/stock-adjustments
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "quantityChange": 5,
+  "reason": "Demo stock correction"
+}
+
+### Approve stock adjustment request
+POST {{baseUrl}}/api/admin/inventory/stock-adjustments/{{stockAdjustmentRequestId}}/approve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "note": "Approved for demo"
+}
+
+### Customer 360 profile
+GET {{baseUrl}}/api/admin/customers/{{customerId}}/profile
+Authorization: Bearer {{adminToken}}
+
+### Risk signals open
+GET {{baseUrl}}/api/admin/risk-signals/open
+Authorization: Bearer {{adminToken}}
+
+### Resolve risk signal
+POST {{baseUrl}}/api/admin/risk-signals/{{riskSignalId}}/resolve
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "note": "Reviewed during demo"
+}
+
+### Wallet
+GET {{baseUrl}}/api/wallet
+Authorization: Bearer {{customerToken}}
+
+### Wallet transactions
+GET {{baseUrl}}/api/wallet/transactions
+Authorization: Bearer {{customerToken}}
+
+### Admin wallet credit
+POST {{baseUrl}}/api/admin/customers/{{customerId}}/wallet/credit
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "amount": 25,
+  "note": "Demo credit"
+}
+
+### Loyalty
+GET {{baseUrl}}/api/loyalty
+Authorization: Bearer {{customerToken}}
+
+### Loyalty transactions
+GET {{baseUrl}}/api/loyalty/transactions
+Authorization: Bearer {{customerToken}}
+
+### Admin loyalty summary
+GET {{baseUrl}}/api/admin/loyalty/summary
+Authorization: Bearer {{adminToken}}
+
+### Demo summary
+GET {{baseUrl}}/api/admin/demo-data/summary
+Authorization: Bearer {{adminToken}}
+
+### Force demo seed manually
+POST {{baseUrl}}/api/admin/demo-data/seed?force=true
+Authorization: Bearer {{adminToken}}

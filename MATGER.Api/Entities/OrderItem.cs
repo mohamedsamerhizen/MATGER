@@ -26,6 +26,8 @@ public sealed class OrderItem
 
     public decimal UnitPrice { get; set; }
 
+    public decimal? CostPriceSnapshot { get; set; }
+
     public int Quantity { get; set; }
 
     public decimal Total { get; set; }

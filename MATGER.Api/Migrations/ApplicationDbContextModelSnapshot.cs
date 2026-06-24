@@ -70,6 +70,41 @@ namespace MATGER.Api.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("MATGER.Api.Entities.Brand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(140)
+                        .HasColumnType("nvarchar(140)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Brands");
+                });
+
             modelBuilder.Entity("MATGER.Api.Entities.Cart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -370,6 +405,117 @@ namespace MATGER.Api.Migrations
                     b.ToTable("CustomerAddresses");
                 });
 
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerInternalNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsImportant")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("IsImportant");
+
+                    b.ToTable("CustomerInternalNotes");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerWallet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerWallets");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerWalletTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ReferenceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReferenceType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("WalletId");
+
+                    b.ToTable("CustomerWalletTransactions");
+                });
+
             modelBuilder.Entity("MATGER.Api.Entities.IdempotencyRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -420,8 +566,15 @@ namespace MATGER.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BinLocation")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("LeadTimeDays")
+                        .HasColumnType("int");
 
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("int");
@@ -435,11 +588,25 @@ namespace MATGER.Api.Migrations
                     b.Property<int>("QuantityReserved")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ReorderPoint")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReorderQuantity")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SupplierSku")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -569,6 +736,84 @@ namespace MATGER.Api.Migrations
                     b.HasIndex("Status");
 
                     b.ToTable("InventoryReservations");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.LoyaltyAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LifetimeEarned")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LifetimeRedeemed")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PointsBalance")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("LoyaltyAccounts");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.LoyaltyTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReferenceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReferenceType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("ReferenceId");
+
+                    b.HasIndex("ReferenceType");
+
+                    b.HasIndex("Type");
+
+                    b.ToTable("LoyaltyTransactions");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.Order", b =>
@@ -759,6 +1004,10 @@ namespace MATGER.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("CostPriceSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uniqueidentifier");
 
@@ -926,8 +1175,15 @@ namespace MATGER.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BrandId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("CategoryId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("CostPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -971,6 +1227,16 @@ namespace MATGER.Api.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
+                    b.Property<DateTime?>("SaleEndAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("SalePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("SaleStartAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -984,6 +1250,8 @@ namespace MATGER.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BrandId");
+
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("IsFeatured");
@@ -992,6 +1260,91 @@ namespace MATGER.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AltText")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ProductId", "SortOrder");
+
+                    b.ToTable("ProductImages");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductPriceHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("NewPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("NewSalePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("OldPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("OldSalePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangedAtUtc");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("ProductPriceHistories");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.ProductReview", b =>
@@ -1051,6 +1404,41 @@ namespace MATGER.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductReviews");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductSpecification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("GroupName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ProductId", "SortOrder");
+
+                    b.ToTable("ProductSpecifications");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.ProductVariant", b =>
@@ -1244,6 +1632,66 @@ namespace MATGER.Api.Migrations
                     b.ToTable("ReturnRequests");
                 });
 
+            modelBuilder.Entity("MATGER.Api.Entities.RiskSignal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SignalType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("Severity");
+
+                    b.HasIndex("SignalType");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RiskSignals");
+                });
+
             modelBuilder.Entity("MATGER.Api.Entities.ShippingMethod", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1282,6 +1730,67 @@ namespace MATGER.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ShippingMethods");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.StockAdjustmentRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AppliedInventoryMovementId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("QuantityChange")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppliedInventoryMovementId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("RequestedAtUtc");
+
+                    b.HasIndex("RequestedByUserId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("VariantId");
+
+                    b.ToTable("StockAdjustmentRequests");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.WishlistItem", b =>
@@ -1604,6 +2113,54 @@ namespace MATGER.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerInternalNote", b =>
+                {
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerWallet", b =>
+                {
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerWalletTransaction", b =>
+                {
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MATGER.Api.Entities.CustomerWallet", "Wallet")
+                        .WithMany("Transactions")
+                        .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Wallet");
+                });
+
             modelBuilder.Entity("MATGER.Api.Entities.IdempotencyRecord", b =>
                 {
                     b.HasOne("MATGER.Api.Identity.ApplicationUser", "User")
@@ -1675,6 +2232,28 @@ namespace MATGER.Api.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("ProductVariant");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.LoyaltyAccount", b =>
+                {
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.LoyaltyTransaction", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.LoyaltyAccount", "Account")
+                        .WithMany("Transactions")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.Order", b =>
@@ -1789,13 +2368,42 @@ namespace MATGER.Api.Migrations
 
             modelBuilder.Entity("MATGER.Api.Entities.Product", b =>
                 {
+                    b.HasOne("MATGER.Api.Entities.Brand", "Brand")
+                        .WithMany("Products")
+                        .HasForeignKey("BrandId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("MATGER.Api.Entities.Category", "Category")
                         .WithMany("Products")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Brand");
+
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductImage", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.Product", "Product")
+                        .WithMany("Images")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductPriceHistory", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.Product", "Product")
+                        .WithMany("PriceHistories")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.ProductReview", b =>
@@ -1830,6 +2438,17 @@ namespace MATGER.Api.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.ProductSpecification", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.Product", "Product")
+                        .WithMany("Specifications")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.ProductVariant", b =>
@@ -1882,6 +2501,56 @@ namespace MATGER.Api.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.RiskSignal", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MATGER.Api.Identity.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.StockAdjustmentRequest", b =>
+                {
+                    b.HasOne("MATGER.Api.Entities.InventoryMovement", "AppliedInventoryMovement")
+                        .WithMany()
+                        .HasForeignKey("AppliedInventoryMovementId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MATGER.Api.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MATGER.Api.Entities.ProductVariant", "Variant")
+                        .WithMany()
+                        .HasForeignKey("VariantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AppliedInventoryMovement");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Variant");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.WishlistItem", b =>
@@ -1954,6 +2623,11 @@ namespace MATGER.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MATGER.Api.Entities.Brand", b =>
+                {
+                    b.Navigation("Products");
+                });
+
             modelBuilder.Entity("MATGER.Api.Entities.Cart", b =>
                 {
                     b.Navigation("Items");
@@ -1967,6 +2641,16 @@ namespace MATGER.Api.Migrations
             modelBuilder.Entity("MATGER.Api.Entities.Coupon", b =>
                 {
                     b.Navigation("Redemptions");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.CustomerWallet", b =>
+                {
+                    b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("MATGER.Api.Entities.LoyaltyAccount", b =>
+                {
+                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("MATGER.Api.Entities.Order", b =>
@@ -1997,9 +2681,15 @@ namespace MATGER.Api.Migrations
                 {
                     b.Navigation("CartItems");
 
+                    b.Navigation("Images");
+
                     b.Navigation("InventoryItem");
 
+                    b.Navigation("PriceHistories");
+
                     b.Navigation("Reviews");
+
+                    b.Navigation("Specifications");
 
                     b.Navigation("Variants");
 

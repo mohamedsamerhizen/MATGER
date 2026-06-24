@@ -12,6 +12,14 @@ public sealed class Product
 
     public decimal Price { get; set; }
 
+    public decimal? CostPrice { get; set; }
+
+    public decimal? SalePrice { get; set; }
+
+    public DateTime? SaleStartAtUtc { get; set; }
+
+    public DateTime? SaleEndAtUtc { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public bool IsFeatured { get; set; }
@@ -32,9 +40,19 @@ public sealed class Product
 
     public Category Category { get; set; } = null!;
 
+    public Guid? BrandId { get; set; }
+
+    public Brand? Brand { get; set; }
+
     public InventoryItem? InventoryItem { get; set; }
 
     public List<ProductVariant> Variants { get; set; } = [];
+
+    public List<ProductImage> Images { get; set; } = [];
+
+    public List<ProductSpecification> Specifications { get; set; } = [];
+
+    public List<ProductPriceHistory> PriceHistories { get; set; } = [];
 
     public List<CartItem> CartItems { get; set; } = [];
 

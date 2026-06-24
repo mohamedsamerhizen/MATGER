@@ -16,6 +16,14 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<Product> Products => Set<Product>();
 
+    public DbSet<Brand> Brands => Set<Brand>();
+
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+
+    public DbSet<ProductSpecification> ProductSpecifications => Set<ProductSpecification>();
+
+    public DbSet<ProductPriceHistory> ProductPriceHistories => Set<ProductPriceHistory>();
+
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
 
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
@@ -45,6 +53,20 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
 
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+
+    public DbSet<StockAdjustmentRequest> StockAdjustmentRequests => Set<StockAdjustmentRequest>();
+
+    public DbSet<CustomerInternalNote> CustomerInternalNotes => Set<CustomerInternalNote>();
+
+    public DbSet<RiskSignal> RiskSignals => Set<RiskSignal>();
+
+    public DbSet<CustomerWallet> CustomerWallets => Set<CustomerWallet>();
+
+    public DbSet<CustomerWalletTransaction> CustomerWalletTransactions => Set<CustomerWalletTransaction>();
+
+    public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
+
+    public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
 
     public DbSet<ReturnRequest> ReturnRequests => Set<ReturnRequest>();
 
@@ -126,6 +148,30 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 .IsUnique();
         });
 
+        builder.Entity<Brand>(entity =>
+        {
+            entity.HasKey(brand => brand.Id);
+
+            entity.Property(brand => brand.Name)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.Property(brand => brand.Slug)
+                .IsRequired()
+                .HasMaxLength(140);
+
+            entity.Property(brand => brand.IsActive)
+                .IsRequired();
+
+            entity.Property(brand => brand.CreatedAt)
+                .IsRequired();
+
+            entity.HasIndex(brand => brand.Slug)
+                .IsUnique();
+
+            entity.HasIndex(brand => brand.IsActive);
+        });
+
         builder.Entity<Product>(entity =>
         {
             entity.HasKey(product => product.Id);
@@ -145,6 +191,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.Property(product => product.Price)
                 .HasPrecision(18, 2)
                 .IsRequired();
+
+            entity.Property(product => product.CostPrice)
+                .HasPrecision(18, 2);
+
+            entity.Property(product => product.SalePrice)
+                .HasPrecision(18, 2);
 
             entity.Property(product => product.IsActive)
                 .IsRequired();
@@ -178,12 +230,123 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 .HasForeignKey(product => product.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            entity.HasOne(product => product.Brand)
+                .WithMany(brand => brand.Products)
+                .HasForeignKey(product => product.BrandId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.HasIndex(product => product.SKU)
                 .IsUnique();
 
             entity.HasIndex(product => product.CategoryId);
 
+            entity.HasIndex(product => product.BrandId);
+
             entity.HasIndex(product => product.IsFeatured);
+        });
+
+        builder.Entity<ProductImage>(entity =>
+        {
+            entity.HasKey(image => image.Id);
+
+            entity.Property(image => image.ImageUrl)
+                .IsRequired()
+                .HasMaxLength(2048);
+
+            entity.Property(image => image.AltText)
+                .HasMaxLength(200);
+
+            entity.Property(image => image.IsPrimary)
+                .IsRequired();
+
+            entity.Property(image => image.SortOrder)
+                .IsRequired();
+
+            entity.Property(image => image.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(image => image.Product)
+                .WithMany(product => product.Images)
+                .HasForeignKey(image => image.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(image => image.ProductId);
+
+            entity.HasIndex(image => new
+            {
+                image.ProductId,
+                image.SortOrder
+            });
+        });
+
+        builder.Entity<ProductSpecification>(entity =>
+        {
+            entity.HasKey(specification => specification.Id);
+
+            entity.Property(specification => specification.Name)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.Property(specification => specification.Value)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(specification => specification.GroupName)
+                .HasMaxLength(120);
+
+            entity.Property(specification => specification.SortOrder)
+                .IsRequired();
+
+            entity.HasOne(specification => specification.Product)
+                .WithMany(product => product.Specifications)
+                .HasForeignKey(specification => specification.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(specification => specification.ProductId);
+
+            entity.HasIndex(specification => new
+            {
+                specification.ProductId,
+                specification.SortOrder
+            });
+        });
+
+        builder.Entity<ProductPriceHistory>(entity =>
+        {
+            entity.HasKey(history => history.Id);
+
+            entity.Property(history => history.OldPrice)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(history => history.NewPrice)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(history => history.OldSalePrice)
+                .HasPrecision(18, 2);
+
+            entity.Property(history => history.NewSalePrice)
+                .HasPrecision(18, 2);
+
+            entity.Property(history => history.ChangedAtUtc)
+                .IsRequired();
+
+            entity.Property(history => history.Reason)
+                .HasMaxLength(500);
+
+            entity.Property(history => history.ChangeType)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.HasOne(history => history.Product)
+                .WithMany(product => product.PriceHistories)
+                .HasForeignKey(history => history.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(history => history.ProductId);
+
+            entity.HasIndex(history => history.ChangedAtUtc);
         });
 
         builder.Entity<ProductVariant>(entity =>
@@ -258,6 +421,15 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
             entity.Property(inventoryItem => inventoryItem.LowStockThreshold)
                 .IsRequired();
+
+            entity.Property(inventoryItem => inventoryItem.SupplierName)
+                .HasMaxLength(160);
+
+            entity.Property(inventoryItem => inventoryItem.SupplierSku)
+                .HasMaxLength(120);
+
+            entity.Property(inventoryItem => inventoryItem.BinLocation)
+                .HasMaxLength(80);
 
             entity.Property(inventoryItem => inventoryItem.CreatedAt)
                 .IsRequired();
@@ -504,6 +676,279 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasIndex(movement => movement.ActorUserId);
         });
 
+        builder.Entity<StockAdjustmentRequest>(entity =>
+        {
+            entity.HasKey(request => request.Id);
+
+            entity.Property(request => request.QuantityChange)
+                .IsRequired();
+
+            entity.Property(request => request.Reason)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(request => request.Status)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(request => request.RequestedAtUtc)
+                .IsRequired();
+
+            entity.Property(request => request.ReviewNote)
+                .HasMaxLength(500);
+
+            entity.HasOne(request => request.Product)
+                .WithMany()
+                .HasForeignKey(request => request.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(request => request.Variant)
+                .WithMany()
+                .HasForeignKey(request => request.VariantId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(request => request.AppliedInventoryMovement)
+                .WithMany()
+                .HasForeignKey(request => request.AppliedInventoryMovementId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(request => request.ProductId);
+
+            entity.HasIndex(request => request.VariantId);
+
+            entity.HasIndex(request => request.RequestedByUserId);
+
+            entity.HasIndex(request => request.ReviewedByUserId);
+
+            entity.HasIndex(request => request.Status);
+
+            entity.HasIndex(request => request.RequestedAtUtc);
+        });
+
+        builder.Entity<CustomerInternalNote>(entity =>
+        {
+            entity.HasKey(note => note.Id);
+
+            entity.Property(note => note.Note)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(note => note.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(note => note.IsImportant)
+                .IsRequired();
+
+            entity.HasOne(note => note.Customer)
+                .WithMany()
+                .HasForeignKey(note => note.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(note => note.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(note => note.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(note => note.CustomerId);
+
+            entity.HasIndex(note => note.CreatedByUserId);
+
+            entity.HasIndex(note => note.CreatedAtUtc);
+
+            entity.HasIndex(note => note.IsImportant);
+        });
+
+        builder.Entity<RiskSignal>(entity =>
+        {
+            entity.HasKey(signal => signal.Id);
+
+            entity.Property(signal => signal.SignalType)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(signal => signal.Severity)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(signal => signal.Details)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(signal => signal.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(signal => signal.Status)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(signal => signal.ResolutionNote)
+                .HasMaxLength(500);
+
+            entity.HasOne(signal => signal.Order)
+                .WithMany()
+                .HasForeignKey(signal => signal.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(signal => signal.User)
+                .WithMany()
+                .HasForeignKey(signal => signal.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(signal => signal.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(signal => signal.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(signal => signal.OrderId);
+
+            entity.HasIndex(signal => signal.UserId);
+
+            entity.HasIndex(signal => signal.SignalType);
+
+            entity.HasIndex(signal => signal.Severity);
+
+            entity.HasIndex(signal => signal.Status);
+
+            entity.HasIndex(signal => signal.CreatedAtUtc);
+
+            entity.HasIndex(signal => signal.ReviewedByUserId);
+        });
+
+        builder.Entity<CustomerWallet>(entity =>
+        {
+            entity.HasKey(wallet => wallet.Id);
+
+            entity.Property(wallet => wallet.Balance)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(wallet => wallet.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(wallet => wallet.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(wallet => wallet.User)
+                .WithMany()
+                .HasForeignKey(wallet => wallet.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(wallet => wallet.UserId)
+                .IsUnique();
+        });
+
+        builder.Entity<CustomerWalletTransaction>(entity =>
+        {
+            entity.HasKey(transaction => transaction.Id);
+
+            entity.Property(transaction => transaction.Amount)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(transaction => transaction.Type)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(transaction => transaction.ReferenceType)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(transaction => transaction.ReferenceId)
+                .HasMaxLength(100);
+
+            entity.Property(transaction => transaction.Note)
+                .HasMaxLength(500);
+
+            entity.Property(transaction => transaction.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(transaction => transaction.Wallet)
+                .WithMany(wallet => wallet.Transactions)
+                .HasForeignKey(transaction => transaction.WalletId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(transaction => transaction.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(transaction => transaction.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(transaction => transaction.WalletId);
+
+            entity.HasIndex(transaction => transaction.Type);
+
+            entity.HasIndex(transaction => transaction.CreatedAtUtc);
+
+            entity.HasIndex(transaction => transaction.CreatedByUserId);
+        });
+
+        builder.Entity<LoyaltyAccount>(entity =>
+        {
+            entity.HasKey(account => account.Id);
+
+            entity.Property(account => account.PointsBalance)
+                .IsRequired();
+
+            entity.Property(account => account.LifetimeEarned)
+                .IsRequired();
+
+            entity.Property(account => account.LifetimeRedeemed)
+                .IsRequired();
+
+            entity.Property(account => account.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(account => account.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(account => account.User)
+                .WithMany()
+                .HasForeignKey(account => account.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(account => account.UserId)
+                .IsUnique();
+        });
+
+        builder.Entity<LoyaltyTransaction>(entity =>
+        {
+            entity.HasKey(transaction => transaction.Id);
+
+            entity.Property(transaction => transaction.Points)
+                .IsRequired();
+
+            entity.Property(transaction => transaction.Type)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(transaction => transaction.ReferenceType)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(transaction => transaction.ReferenceId)
+                .HasMaxLength(100);
+
+            entity.Property(transaction => transaction.Note)
+                .HasMaxLength(500);
+
+            entity.Property(transaction => transaction.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne(transaction => transaction.Account)
+                .WithMany(account => account.Transactions)
+                .HasForeignKey(transaction => transaction.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(transaction => transaction.AccountId);
+
+            entity.HasIndex(transaction => transaction.Type);
+
+            entity.HasIndex(transaction => transaction.ReferenceType);
+
+            entity.HasIndex(transaction => transaction.ReferenceId);
+
+            entity.HasIndex(transaction => transaction.CreatedAtUtc);
+        });
+
         builder.Entity<Order>(entity =>
         {
             entity.HasKey(order => order.Id);
@@ -645,6 +1090,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.Property(orderItem => orderItem.UnitPrice)
                 .HasPrecision(18, 2)
                 .IsRequired();
+
+            entity.Property(orderItem => orderItem.CostPriceSnapshot)
+                .HasPrecision(18, 2);
 
             entity.Property(orderItem => orderItem.Quantity)
                 .IsRequired();

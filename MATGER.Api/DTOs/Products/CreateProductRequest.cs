@@ -19,6 +19,9 @@ public sealed class CreateProductRequest
     [Range(0.01, 999999999)]
     public decimal Price { get; init; }
 
+    [Range(0, 999999999)]
+    public decimal? CostPrice { get; init; }
+
     public bool IsFeatured { get; init; }
 
     [Range(0.001, 999999.999)]
@@ -40,4 +43,6 @@ public sealed class CreateProductRequest
 
     [Required]
     public Guid CategoryId { get; init; }
+
+    public Guid? BrandId { get; init; }
 }

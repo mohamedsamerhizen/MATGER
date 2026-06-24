@@ -116,44 +116,46 @@ public sealed class ExpiredInventoryReservationService(
                         continue;
                     }
 
-                    if (reservation.ProductVariant.QuantityReserved < reservation.Quantity)
-                    {
-                        logger.LogError(
-                            "Variant reserved quantity is invalid while expiring reservation {ReservationId}. Reserved: {QuantityReserved}, reservation quantity: {ReservationQuantity}.",
-                            reservation.Id,
-                            reservation.ProductVariant.QuantityReserved,
-                            reservation.Quantity);
-
-                        continue;
-                    }
-
                     var quantityAvailableBefore = reservation.ProductVariant.QuantityAvailable;
                     var quantityReservedBefore = reservation.ProductVariant.QuantityReserved;
+                    var quantityToRelease = Math.Min(quantityReservedBefore, reservation.Quantity);
                     var previousReservationStatus = reservation.Status;
+
+                    if (quantityToRelease < reservation.Quantity)
+                    {
+                        logger.LogWarning(
+                            "Variant reservation {ReservationId} had less reserved stock than expected. Reserved: {QuantityReserved}, reservation quantity: {ReservationQuantity}. Releasing available reserved stock only.",
+                            reservation.Id,
+                            quantityReservedBefore,
+                            reservation.Quantity);
+                    }
 
                     reservation.Status = InventoryReservationStatus.Expired;
                     reservation.ExpiredAt = now;
 
-                    reservation.ProductVariant.QuantityReserved -= reservation.Quantity;
-                    reservation.ProductVariant.QuantityAvailable += reservation.Quantity;
+                    reservation.ProductVariant.QuantityReserved -= quantityToRelease;
+                    reservation.ProductVariant.QuantityAvailable += quantityToRelease;
                     reservation.ProductVariant.UpdatedAt = now;
 
-                    await inventoryMovementService.LogAsync(
-                        productId: reservation.ProductId,
-                        inventoryItemId: Guid.Empty,
-                        type: InventoryMovementType.ReservationExpired,
-                        quantityChange: reservation.Quantity,
-                        quantityAvailableBefore: quantityAvailableBefore,
-                        quantityAvailableAfter: reservation.ProductVariant.QuantityAvailable,
-                        quantityReservedBefore: quantityReservedBefore,
-                        quantityReservedAfter: reservation.ProductVariant.QuantityReserved,
-                        reason: "Product variant inventory reservation expired before payment confirmation.",
-                        referenceType: nameof(InventoryReservation),
-                        referenceId: reservation.Id.ToString(),
-                        actorUserId: null,
-                        createdAt: now,
-                        cancellationToken: stoppingToken,
-                        productVariantId: reservation.ProductVariantId);
+                    if (quantityToRelease > 0)
+                    {
+                        await inventoryMovementService.LogAsync(
+                            productId: reservation.ProductId,
+                            inventoryItemId: Guid.Empty,
+                            type: InventoryMovementType.ReservationExpired,
+                            quantityChange: quantityToRelease,
+                            quantityAvailableBefore: quantityAvailableBefore,
+                            quantityAvailableAfter: reservation.ProductVariant.QuantityAvailable,
+                            quantityReservedBefore: quantityReservedBefore,
+                            quantityReservedAfter: reservation.ProductVariant.QuantityReserved,
+                            reason: "Product variant inventory reservation expired before payment confirmation.",
+                            referenceType: nameof(InventoryReservation),
+                            referenceId: reservation.Id.ToString(),
+                            actorUserId: null,
+                            createdAt: now,
+                            cancellationToken: stoppingToken,
+                            productVariantId: reservation.ProductVariantId);
+                    }
 
                     affectedOrders[reservation.OrderId] = reservation.Order;
                     expiredReservationIds.Add(reservation.Id);
@@ -180,6 +182,7 @@ public sealed class ExpiredInventoryReservationService(
                             reservation.ProductId,
                             reservation.ProductVariantId,
                             reservation.Quantity,
+                            ReleasedQuantity = quantityToRelease,
                             QuantityAvailable = reservation.ProductVariant.QuantityAvailable,
                             QuantityReserved = reservation.ProductVariant.QuantityReserved
                         },
@@ -199,43 +202,45 @@ public sealed class ExpiredInventoryReservationService(
                     continue;
                 }
 
-                if (inventoryItem.QuantityReserved < reservation.Quantity)
-                {
-                    logger.LogError(
-                        "Reserved quantity is invalid while expiring reservation {ReservationId}. Reserved: {QuantityReserved}, reservation quantity: {ReservationQuantity}.",
-                        reservation.Id,
-                        inventoryItem.QuantityReserved,
-                        reservation.Quantity);
-
-                    continue;
-                }
-
                 var productQuantityAvailableBefore = inventoryItem.QuantityAvailable;
                 var productQuantityReservedBefore = inventoryItem.QuantityReserved;
+                var productQuantityToRelease = Math.Min(productQuantityReservedBefore, reservation.Quantity);
                 var previousProductReservationStatus = reservation.Status;
+
+                if (productQuantityToRelease < reservation.Quantity)
+                {
+                    logger.LogWarning(
+                        "Inventory reservation {ReservationId} had less reserved stock than expected. Reserved: {QuantityReserved}, reservation quantity: {ReservationQuantity}. Releasing available reserved stock only.",
+                        reservation.Id,
+                        productQuantityReservedBefore,
+                        reservation.Quantity);
+                }
 
                 reservation.Status = InventoryReservationStatus.Expired;
                 reservation.ExpiredAt = now;
 
-                inventoryItem.QuantityReserved -= reservation.Quantity;
-                inventoryItem.QuantityAvailable += reservation.Quantity;
+                inventoryItem.QuantityReserved -= productQuantityToRelease;
+                inventoryItem.QuantityAvailable += productQuantityToRelease;
                 inventoryItem.UpdatedAt = now;
 
-                await inventoryMovementService.LogAsync(
-                    productId: inventoryItem.ProductId,
-                    inventoryItemId: inventoryItem.Id,
-                    type: InventoryMovementType.ReservationExpired,
-                    quantityChange: reservation.Quantity,
-                    quantityAvailableBefore: productQuantityAvailableBefore,
-                    quantityAvailableAfter: inventoryItem.QuantityAvailable,
-                    quantityReservedBefore: productQuantityReservedBefore,
-                    quantityReservedAfter: inventoryItem.QuantityReserved,
-                    reason: "Inventory reservation expired before payment confirmation.",
-                    referenceType: nameof(InventoryReservation),
-                    referenceId: reservation.Id.ToString(),
-                    actorUserId: null,
-                    createdAt: now,
-                    cancellationToken: stoppingToken);
+                if (productQuantityToRelease > 0)
+                {
+                    await inventoryMovementService.LogAsync(
+                        productId: inventoryItem.ProductId,
+                        inventoryItemId: inventoryItem.Id,
+                        type: InventoryMovementType.ReservationExpired,
+                        quantityChange: productQuantityToRelease,
+                        quantityAvailableBefore: productQuantityAvailableBefore,
+                        quantityAvailableAfter: inventoryItem.QuantityAvailable,
+                        quantityReservedBefore: productQuantityReservedBefore,
+                        quantityReservedAfter: inventoryItem.QuantityReserved,
+                        reason: "Inventory reservation expired before payment confirmation.",
+                        referenceType: nameof(InventoryReservation),
+                        referenceId: reservation.Id.ToString(),
+                        actorUserId: null,
+                        createdAt: now,
+                        cancellationToken: stoppingToken);
+                }
 
                 affectedOrders[reservation.OrderId] = reservation.Order;
                 expiredReservationIds.Add(reservation.Id);
@@ -261,6 +266,7 @@ public sealed class ExpiredInventoryReservationService(
                         reservation.OrderId,
                         reservation.ProductId,
                         reservation.Quantity,
+                        ReleasedQuantity = productQuantityToRelease,
                         InventoryItemId = inventoryItem.Id,
                         QuantityAvailable = inventoryItem.QuantityAvailable,
                         QuantityReserved = inventoryItem.QuantityReserved

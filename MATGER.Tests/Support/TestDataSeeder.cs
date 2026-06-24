@@ -27,6 +27,26 @@ public static class TestDataSeeder
         return category;
     }
 
+    public static async Task<Brand> CreateBrandAsync(
+        ApplicationDbContext dbContext,
+        string slug,
+        bool isActive = true)
+    {
+        var brand = new Brand
+        {
+            Id = Guid.NewGuid(),
+            Name = $"Brand {slug}",
+            Slug = slug,
+            IsActive = isActive,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        dbContext.Brands.Add(brand);
+        await dbContext.SaveChangesAsync();
+
+        return brand;
+    }
+
     public static async Task<Product> CreateProductAsync(
         ApplicationDbContext dbContext,
         Category category,
@@ -34,7 +54,12 @@ public static class TestDataSeeder
         bool isActive = true,
         bool isFeatured = false,
         int quantityAvailable = 10,
-        bool isReturnable = true)
+        bool isReturnable = true,
+        Brand? brand = null,
+        decimal? costPrice = 10m,
+        decimal? salePrice = null,
+        DateTime? saleStartAtUtc = null,
+        DateTime? saleEndAtUtc = null)
     {
         var product = new Product
         {
@@ -43,10 +68,16 @@ public static class TestDataSeeder
             Description = $"Test product {sku}",
             SKU = sku,
             Price = 25m,
+            CostPrice = costPrice,
+            SalePrice = salePrice,
+            SaleStartAtUtc = saleStartAtUtc,
+            SaleEndAtUtc = saleEndAtUtc,
             IsActive = isActive,
             IsFeatured = isFeatured,
             CategoryId = category.Id,
             Category = category,
+            BrandId = brand?.Id,
+            Brand = brand,
             IsReturnable = isReturnable,
             ReturnWindowDays = 30,
             CreatedAt = DateTime.UtcNow
@@ -68,6 +99,50 @@ public static class TestDataSeeder
         await dbContext.SaveChangesAsync();
 
         return product;
+    }
+
+    public static async Task<ProductImage> CreateProductImageAsync(
+        ApplicationDbContext dbContext,
+        Product product,
+        bool isPrimary = true)
+    {
+        var image = new ProductImage
+        {
+            Id = Guid.NewGuid(),
+            ProductId = product.Id,
+            Product = product,
+            ImageUrl = $"https://cdn.matger.local/products/{product.SKU.ToLowerInvariant()}.jpg",
+            AltText = $"{product.Name} image",
+            IsPrimary = isPrimary,
+            SortOrder = 0,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        dbContext.ProductImages.Add(image);
+        await dbContext.SaveChangesAsync();
+
+        return image;
+    }
+
+    public static async Task<ProductSpecification> CreateProductSpecificationAsync(
+        ApplicationDbContext dbContext,
+        Product product)
+    {
+        var specification = new ProductSpecification
+        {
+            Id = Guid.NewGuid(),
+            ProductId = product.Id,
+            Product = product,
+            Name = "Material",
+            Value = "Aluminum",
+            GroupName = "General",
+            SortOrder = 0
+        };
+
+        dbContext.ProductSpecifications.Add(specification);
+        await dbContext.SaveChangesAsync();
+
+        return specification;
     }
 
     public static async Task<ProductVariant> CreateVariantAsync(
@@ -191,6 +266,7 @@ public static class TestDataSeeder
             VariantNameSnapshot = variant?.Name,
             VariantSkuSnapshot = variant?.SKU,
             UnitPrice = unitPrice,
+            CostPriceSnapshot = product.CostPrice,
             Quantity = 1,
             Total = unitPrice
         });
